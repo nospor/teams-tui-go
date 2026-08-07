@@ -1579,6 +1579,10 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 				m.app.MentionSearch = query
 				m.app.MentionStartIndex = startIdx
 				m = m.rebuildMentionSuggestions()
+				if len(m.app.MentionSuggestions) == 0 {
+					m.app.MentionPopupMode = false
+					m.app.MentionSuggestions = nil
+				}
 			}
 		} else {
 			m.app.MentionCanceledStartIndex = -1
@@ -6685,6 +6689,9 @@ func getCursorPos(ta textarea.Model) int {
 }
 
 // getMentionQuery looks backward from the cursor in a string to find an active '@' mention search.
+// An '@' only counts as a mention when it starts a word: it must be at the start of the
+// string or immediately preceded by whitespace. Embedded '@' characters (e.g. inside an
+// email address like jvernon@amsci.org) are ignored.
 func getMentionQuery(val string, cursor int) (int, string, bool) {
 	runes := []rune(val)
 	if cursor < 0 || cursor > len(runes) {
@@ -6696,6 +6703,12 @@ func getMentionQuery(val string, cursor int) (int, string, bool) {
 			break
 		}
 		if r == '@' {
+			if i > 0 {
+				prev := runes[i-1]
+				if prev != ' ' && prev != '\n' && prev != '\r' && prev != '\t' {
+					break
+				}
+			}
 			query := string(runes[i+1 : cursor])
 			return i, query, true
 		}

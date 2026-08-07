@@ -463,6 +463,91 @@ func TestGetAttachmentSavedName(t *testing.T) {
 	}
 }
 
+func TestGetMentionQuery(t *testing.T) {
+	tests := []struct {
+		name       string
+		val        string
+		cursor     int
+		ok         bool
+		wantStart  int
+		wantQuery  string
+	}{
+		{
+			name:      "email at end of message",
+			val:       "PUB, ADV\u2014 Jamie Vernon, Publisher, TF: 800-282-0444 Ext. 223, E-mail jvernon@amsci.org",
+			cursor:    86,
+			ok:        false,
+		},
+		{
+			name:      "mention after space",
+			val:       "hello @jane",
+			cursor:    11,
+			ok:        true,
+			wantStart: 6,
+			wantQuery: "jane",
+		},
+		{
+			name:      "mention at start of string",
+			val:       "@jane",
+			cursor:    5,
+			ok:        true,
+			wantStart: 0,
+			wantQuery: "jane",
+		},
+		{
+			name:      "mention at very end",
+			val:       "hi @",
+			cursor:    4,
+			ok:        true,
+			wantStart: 3,
+			wantQuery: "",
+		},
+		{
+			name:      "at sign embedded mid-word",
+			val:       "jvernon@amsci.org",
+			cursor:    16,
+			ok:        false,
+		},
+		{
+			name:      "at sign preceded by punctuation",
+			val:       "(@jane",
+			cursor:    6,
+			ok:        false,
+		},
+		{
+			name:      "no at sign",
+			val:       "plain text",
+			cursor:    10,
+			ok:        false,
+		},
+		{
+			name:      "email then mention",
+			val:       "mail me@x.com then @jane",
+			cursor:    24,
+			ok:        true,
+			wantStart: 19,
+			wantQuery: "jane",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start, query, ok := getMentionQuery(tt.val, tt.cursor)
+			if ok != tt.ok {
+				t.Errorf("getMentionQuery() ok = %v, expected %v", ok, tt.ok)
+			}
+			if tt.ok {
+				if start != tt.wantStart {
+					t.Errorf("getMentionQuery() start = %d, expected %d", start, tt.wantStart)
+				}
+				if query != tt.wantQuery {
+					t.Errorf("getMentionQuery() query = %q, expected %q", query, tt.wantQuery)
+				}
+			}
+		})
+	}
+}
+
 
 
 
