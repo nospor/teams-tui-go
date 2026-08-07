@@ -299,6 +299,27 @@ type Model struct {
 
 	lastWrittenMessages  int
 	lastWrittenReactions int
+
+	// tickDidWork is set by the MsgTick handler when that tick actually
+	// changed something visible. Update consults it to decide whether the
+	// memoized view can be reused. Reset after every Update.
+	tickDidWork bool
+
+	// viewCache holds the last string produced by View(). Bubble Tea calls
+	// View() after every message, including the 100ms heartbeat tick, which
+	// would otherwise re-render the whole UI ten times a second while idle.
+	// The cache is shared via pointer because View() has a value receiver.
+	viewCache *viewCache
+}
+
+// viewCache memoizes the rendered UI between Update calls that cannot have
+// changed it. Update marks the cache dirty for every message except a tick
+// that did no work, so anything that mutates state still repaints promptly.
+type viewCache struct {
+	dirty bool
+	// w/h guard against a resize slipping through while dirty is false.
+	w, h int
+	view string
 }
 
 // NewModel creates the initial Bubble Tea model.
@@ -369,6 +390,7 @@ func NewModel(app *App, clientID, userID string) Model {
 		filepicker:           fp,
 		lastWrittenMessages:  -1,
 		lastWrittenReactions: -1,
+		viewCache:            &viewCache{dirty: true},
 	}
 }
 
@@ -422,14 +444,22 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 	case MsgTick:
 		cmds = append(cmds, tickCmd())
 
+		// The tick fires 10x/sec purely to drive timers. Most do nothing, so
+		// the branches below set tickDidWork when they change something the
+		// user can see; if none do, Update skips the repaint and the unread
+		// scan. Commands dispatched here don't count — their results arrive
+		// as their own messages, which mark the view dirty when they land.
+
 		// Clear expired status messages.
 		if m.app.StatusUntil != nil && time.Now().After(*m.app.StatusUntil) {
 			m.app.Status = ""
 			m.app.StatusUntil = nil
+			m.tickDidWork = true
 		}
 		if m.app.SearchStatusUntil != nil && time.Now().After(*m.app.SearchStatusUntil) {
 			m.app.SearchStatus = ""
 			m.app.SearchStatusUntil = nil
+			m.tickDidWork = true
 		}
 
 		// Periodic chat refresh every ~15 s.
@@ -2749,7 +2779,25 @@ func (m Model) handleUrlSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 // the new model plus any commands.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	updatedModel, cmd := m.updateInternal(msg)
-	updatedModel = updatedModel.writeAppState()
+
+	// A heartbeat tick that changed nothing cannot have changed the unread
+	// counts or the rendered view either, so skip both. Everything else falls
+	// through to the full path — defaulting to "do the work" keeps this safe
+	// when new message types are added.
+	_, isTick := msg.(MsgTick)
+	idleTick := isTick && !updatedModel.tickDidWork
+
+	if !idleTick {
+		// Scanning every chat for unread messages/reactions is O(chats) and
+		// costs more than a repaint on large accounts; it only needs to run
+		// when something might actually have changed.
+		updatedModel = updatedModel.writeAppState()
+		if updatedModel.viewCache != nil {
+			updatedModel.viewCache.dirty = true
+		}
+	}
+	updatedModel.tickDidWork = false
+
 	return updatedModel, cmd
 }
 
@@ -2808,8 +2856,39 @@ func (m Model) writeAppState() Model {
 // Main View
 // ---------------------------------------------------------------------------
 
-// View renders the complete TUI.
+// View returns the rendered TUI, reusing the previous render when nothing has
+// changed since it was produced.
+//
+// Bubble Tea calls View() after every message, and the 100ms heartbeat tick
+// means that happens 10x/sec even on a completely idle screen. Rendering costs
+// ~1-3ms depending on history size, which burned a few percent of a CPU core
+// continuously. Bubble Tea already skips the terminal write when the output is
+// unchanged, but it does so only after calling View(), so the work still had to
+// be avoided here.
+//
+// The render functions are pure with respect to the terminal — they compute
+// strings from model state without performing I/O — so skipping a redundant
+// call is unobservable. Update() marks the cache dirty for everything except a
+// tick that did no work.
 func (m Model) View() string {
+	if m.viewCache != nil && !m.viewCache.dirty &&
+		m.viewCache.w == m.width && m.viewCache.h == m.height {
+		return m.viewCache.view
+	}
+
+	out := m.renderView()
+
+	if m.viewCache != nil {
+		m.viewCache.dirty = false
+		m.viewCache.w = m.width
+		m.viewCache.h = m.height
+		m.viewCache.view = out
+	}
+	return out
+}
+
+// renderView builds the complete TUI from scratch.
+func (m Model) renderView() string {
 	if m.width == 0 {
 		return "Loading..."
 	}
