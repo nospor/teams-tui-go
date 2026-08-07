@@ -1,5 +1,62 @@
 # Changelog
 
+## [1.2.4] - 2026-08-07
+
+### Bug Fixes
+
+- *(compose)* **Enter key blocked when composing message containing an email address** - ([35627cd](https://github.com/nospor/teams-tui-go/commit/35627cd6dd1a75c18d69472918f2d7df824b69bf))
+
+
+
+### Other
+
+- **Merge pull request #1 from carun/perf/idle-cpu-usage
+
+perf(tui): eliminate idle CPU usage from the 100ms heartbeat tick** - ([dbf6d3b](https://github.com/nospor/teams-tui-go/commit/dbf6d3b5fc886d186cae14f8061c4492596f4491))
+
+
+
+### Performance
+
+- *(tui)* **Eliminate idle CPU usage from the 100ms heartbeat tick** - ([64e31bb](https://github.com/nospor/teams-tui-go/commit/64e31bbb86679a63f7cd028c04bd0c76f059ebd4))
+
+
+> The app consumed several percent of a CPU core while completely idle.
+> Two independent sinks, both driven by the 100ms heartbeat tick that
+> Bubble Tea turns into an Update+View cycle ten times a second:
+> 
+> 1. View() rebuilt the entire UI on every tick. Bubble Tea skips the
+>    terminal write when output is unchanged, but only after calling
+>    View(), so the full render cost (~1-3ms, scaling with history size)
+>    was paid regardless.
+> 
+> 2. writeAppState() ran on every Update, scanning every chat via
+>    isUnread/hasUnreadReactions to compute badge counts — ~166us per
+>    call. It already skipped the file write when nothing changed, but
+>    the scan itself ran unconditionally, costing more than the render.
+> 
+> Both are now skipped when a tick did no work. The tick handler sets
+> tickDidWork when it changes something visible (e.g. expiring a status
+> message); otherwise Update reuses the memoized view and skips the scan.
+> 
+> The logic defaults to doing the work, so message types added later
+> repaint correctly without opting in. A width/height check catches
+> resizes even if the dirty flag were stale.
+> 
+> Measured over 100 idle ticks (10s idle, 100 chats / 500 messages):
+>   before:            ~3.1% of one core
+>   render cache:       0.161%
+>   + writeAppState:    0.014%
+> Cached render path: 837us -> 1.08us.
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.2.3 [skip ci]** - ([6187c59](https://github.com/nospor/teams-tui-go/commit/6187c592b5142182e223bf2b8fff643ae67c75e9))
+
+
+
 ## [1.2.3] - 2026-07-24
 
 ### Features
