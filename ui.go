@@ -13,12 +13,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/atotto/clipboard"
-	"github.com/nospor/teams-tui-go/filepicker"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gen2brain/beeep"
+	"github.com/nospor/teams-tui-go/filepicker"
 	"regexp"
 )
 
@@ -126,7 +126,6 @@ type MsgBackgroundMessagesLoaded struct {
 type MsgPollReactionsLoaded struct {
 	Results map[string][]Message
 }
-
 
 // MsgPresenceLoaded is sent when a user's presence status has been fetched.
 type MsgPresenceLoaded struct {
@@ -288,7 +287,6 @@ type Model struct {
 	// originalChannelIndex maps channel ID to its original index in its team's channel list when loaded.
 	originalChannelIndex map[string]int
 
-
 	// Channel sidebar navigation (used when teams_channels_enabled).
 	// channelSelectedIndex is an index into the flat list returned by allChannels().
 	// -1 means focus is in the chat list (default).
@@ -438,7 +436,7 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 		if popupH < 15 {
 			popupH = 15
 		}
-		m.filepicker.SetHeight(popupH - 7)
+		m.filepicker.SetHeight(popupH - 8)
 
 	// ── Heartbeat tick ───────────────────────────────────────────────────
 	case MsgTick:
@@ -3635,7 +3633,6 @@ func (m Model) renderChatList(w, h int) string {
 	return strings.Join(lines, "\n")
 }
 
-
 // ---------------------------------------------------------------------------
 // Messages rendering
 // ---------------------------------------------------------------------------
@@ -3730,7 +3727,7 @@ func (m Model) renderMessages(w, h int) string {
 						color = lipgloss.Color("#5FAF87") // own reply color (greenish)
 					}
 					replyPrefix := lipgloss.NewStyle().Foreground(colDimGray).Render("  ↳ ")
-					header = replyPrefix + lipgloss.NewStyle().Foreground(color).Render(senderName + " " + dateStr)
+					header = replyPrefix + lipgloss.NewStyle().Foreground(color).Render(senderName+" "+dateStr)
 				}
 			} else {
 				if alignRight {
@@ -5079,7 +5076,6 @@ func (m Model) handleSearchPopupNavigationKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 
-
 	case "y":
 		if len(m.app.SearchPopupResults) > 0 && m.app.SearchPopupSelectedIndex < len(m.app.SearchPopupResults) {
 			msgObj := m.app.SearchPopupResults[m.app.SearchPopupSelectedIndex].Message
@@ -5442,7 +5438,6 @@ func (m Model) updateCachedMessages(chatID string, msgs []Message) Model {
 	return m
 }
 
-
 type UserSearchItemType int
 
 const (
@@ -5666,7 +5661,7 @@ func (m Model) renderUserSearchPopup(w, h int) string {
 		if m.app.UserSearchSelectedIndex < 0 {
 			m.app.UserSearchSelectedIndex = 0
 		}
- 
+
 		linesRendered := 0
 		for idx, item := range items {
 			isSelected := idx == m.app.UserSearchSelectedIndex
@@ -5674,7 +5669,7 @@ func (m Model) renderUserSearchPopup(w, h int) string {
 			if isSelected {
 				prefix = "> "
 			}
- 
+
 			var line string
 			switch item.Type {
 			case UserSearchItemLocal:
@@ -5838,7 +5833,7 @@ func (m Model) renderMessagePopup(w, h int) string {
 		lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render("Date: ") + timeStr,
 	}
 	if msg.Subject != "" {
-		headerLines = append(headerLines, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render("Subject: ") + msg.Subject)
+		headerLines = append(headerLines, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render("Subject: ")+msg.Subject)
 	}
 	headerLines = append(headerLines, "")
 
@@ -6868,14 +6863,19 @@ func (m Model) renderFilePickerPopup(w, h int) string {
 
 	currentDir := lipgloss.NewStyle().Foreground(colWhite).Bold(true).Render("Directory: " + m.filepicker.CurrentDirectory)
 	sortMode := lipgloss.NewStyle().Foreground(colYellow).Render(fmt.Sprintf("Sorted by: %s (%s)", m.filepicker.SortBy.String(), m.filepicker.SortOrder.String()))
+	hiddenStatus := "off"
+	if m.filepicker.ShowHidden {
+		hiddenStatus = "on"
+	}
+	hiddenMode := lipgloss.NewStyle().Foreground(colDimGray).Render("Hidden: " + hiddenStatus)
 
 	var lines []string
-	lines = append(lines, title, currentDir, sortMode, "")
+	lines = append(lines, title, currentDir, sortMode, hiddenMode, "")
 
 	// Render the filepicker component
 	lines = append(lines, m.filepicker.View())
 
-	footer := dimStyle.Italic(true).Render("j/k or ↑/↓: Navigate • s: Change Sort • o: Change Order • Enter: Attach • Esc / q: Cancel")
+	footer := dimStyle.Italic(true).Render("j/k or ↑/↓: Navigate • s: Change Sort • o: Change Order • .: Toggle Hidden • Enter: Attach • Esc / q: Cancel")
 	lines = append(lines, "", footer)
 
 	return lipgloss.NewStyle().
@@ -6885,4 +6885,3 @@ func (m Model) renderFilePickerPopup(w, h int) string {
 		Width(w).Height(h).
 		Render(strings.Join(lines, "\n"))
 }
-

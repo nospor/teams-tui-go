@@ -327,6 +327,7 @@ When in compose mode (`i`), you can paste images (PNG/JPEG) directly from your s
 When `file_upload_enabled` is set to `true` in `config.json`, you can attach small files (under 4MB) from your local computer to chat or channel messages.
 - In compose mode (`i`), press **`Ctrl+f`** to open the offline file browser overlay.
 - Navigate directories using `j`/`k` (or arrow keys) and enter directories with `Enter`. Move to parent directories via `..`.
+- Press `.` to toggle the display of hidden files/folders (e.g. `.config`, `.cache`).
 - Highlight a file and press **`Enter`** to select and attach it.
 - A placeholder like `[File: filename.ext]` is inserted into the textarea. You can move, copy, or delete it to control inline message rendering.
 - When sending the message, files are automatically uploaded to OneDrive (for chats) or SharePoint (for channels) and attached as reference attachments to the message.
