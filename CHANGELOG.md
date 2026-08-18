@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.5] - 2026-08-18
+
+### Features
+
+- *(filepicker)* **Add "." to toggle hidden files and folders** - ([ab1ffdf](https://github.com/nospor/teams-tui-go/commit/ab1ffdf47f4cb12c3fad2c23f88a63666b33cdd4))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.2.4 [skip ci]** - ([aaa8e12](https://github.com/nospor/teams-tui-go/commit/aaa8e129fee94e6bde02c992fa8ccf7c81407c3e))
+
+
+
 ## [1.2.4] - 2026-08-07
 
 ### Bug Fixes
