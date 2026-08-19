@@ -254,6 +254,48 @@ func TestHTMLToTextMentions(t *testing.T) {
 	}
 }
 
+func TestHTMLToTextStrikethrough(t *testing.T) {
+	// Force color profile for testing ANSI codes.
+	oldProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(oldProfile)
+
+	// Single strikethrough span: must be exactly one SGR 9 pair, not
+	// per-character toggling.
+	single := HTMLToText(`<p>closed <s>SRDS-73 </s>.</p>`, nil, nil)
+	if strings.Count(single, "\x1b[9m") != 1 {
+		t.Errorf("expected 1 strikethrough opening, got %d in %q", strings.Count(single, "\x1b[9m"), single)
+	}
+	if strings.Count(single, "\x1b[0m") != 1 {
+		t.Errorf("expected 1 reset, got %d in %q", strings.Count(single, "\x1b[0m"), single)
+	}
+	if strings.Contains(single, "\x1b[0m\x1b[9m") {
+		t.Errorf("found per-character strikethrough toggling in %q", single)
+	}
+
+	// Strikethrough nested inside a hyperlink (e.g. a closed ticket). The
+	// link styling must not corrupt the embedded strikethrough sequence.
+	linked := HTMLToText(`<p>closed <a href="https://example.com/SRDS-73"><s>SRDS-73 </s></a>.</p>`, nil, nil)
+	if strings.Contains(linked, "\x1b[0m\x1b[9m") {
+		t.Errorf("found per-character toggling in %q", linked)
+	}
+	if strings.Contains(linked, "\x1b[0m\x1b[4") {
+		t.Errorf("found per-character link toggling in %q", linked)
+	}
+	// The strikethrough + underline must be a single combined SGR sequence.
+	if !strings.Contains(linked, "\x1b[9;4;") && !strings.Contains(linked, "\x1b[4;") {
+		t.Errorf("expected a combined strikethrough+underline sequence in %q", linked)
+	}
+
+	// Multiple spans (as in the real "SRDS-73" message) still strip cleanly.
+	multi := HTMLToText(`<p>I see you have closed <s>SRDS-73 </s><s>.</s> Is that all?</p>`, nil, nil)
+	plain := stripANSI(multi)
+	expected := "I see you have closed SRDS-73 . Is that all?"
+	if plain != expected {
+		t.Errorf("expected %q, got %q", expected, plain)
+	}
+}
+
 func TestComputeDisplayName(t *testing.T) {
 	strPtr := func(s string) *string { return &s }
 

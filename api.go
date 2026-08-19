@@ -1864,32 +1864,33 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 		if inCode && inPre {
 			return preCodeStyle.Render(text)
 		}
-		s := lipgloss.NewStyle()
-		anySet := false
-		if inBold {
-			s = s.Bold(true)
-			anySet = true
+		// Build a single SGR sequence manually. lipgloss's Strikethrough(true)
+		// and Underline(true) render per-character escape pairs, which corrupt
+		// embedded ANSI sequences when styles are nested (e.g. a struck ticket
+		// inside a hyperlink). Emitting one combined sequence keeps the output
+		// compact and corruption-free.
+		var params []string
+		if inBold || inMention {
+			params = append(params, "1")
 		}
 		if inItalic {
-			s = s.Italic(true)
-			anySet = true
+			params = append(params, "3")
 		}
 		if inStrike {
-			s = s.Strikethrough(true)
-			anySet = true
+			params = append(params, "9")
 		}
-		if inCode {
-			s = s.Foreground(lipgloss.Color("#E5C07B"))
-			anySet = true
+		switch {
+		case inLink:
+			params = append(params, "4", "38;2;0;175;255")
+		case inMention:
+			params = append(params, "38;2;95;135;255")
+		case inCode:
+			params = append(params, "38;2;229;192;123")
 		}
-		if inMention {
-			s = s.Foreground(lipgloss.Color("#5F87FF")).Bold(true)
-			anySet = true
-		}
-		if !anySet {
+		if len(params) == 0 {
 			return text
 		}
-		return s.Render(text)
+		return "\x1b[" + strings.Join(params, ";") + "m" + text + "\x1b[0m"
 	}
 
 	for {
@@ -2146,18 +2147,14 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 
 				if inLink && currentLinkURL != "" {
 					linkText.WriteString(text)
-					linkStyled := lipgloss.NewStyle().
-						Foreground(lipgloss.Color("#00AFFF")).
-						Underline(true).
-						Render(styledText)
-					styledText = fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", currentLinkURL, linkStyled)
+					// Link colour/underline are applied inside applyInlineStyles;
+					// here we only wrap the (already styled) text in an OSC 8
+					// hyperlink so no ANSI sequences get re-wrapped.
+					styledText = fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", currentLinkURL, styledText)
 				} else if !inBold && !inItalic && !inStrike && !inCode && !inMention {
 					// Plain text: detect and style bare URLs.
 					styledText = urlRegex.ReplaceAllStringFunc(text, func(u string) string {
-						styled := lipgloss.NewStyle().
-							Foreground(lipgloss.Color("#00AFFF")).
-							Underline(true).
-							Render(u)
+						styled := "\x1b[4;38;2;0;175;255m" + u + "\x1b[0m"
 						return fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", u, styled)
 					})
 				}
