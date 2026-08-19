@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.6] - 2026-08-19
+
+### Bug Fixes
+
+- **Render strikethrough as a single SGR sequence** - ([08c89f0](https://github.com/nospor/teams-tui-go/commit/08c89f067737e779566870996eceb550b78fc11e))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.2.5 [skip ci]** - ([d3b0d95](https://github.com/nospor/teams-tui-go/commit/d3b0d959197a5249725c7dc60b6719d7cca534dd))
+
+
+
 ## [1.2.5] - 2026-08-18
 
 ### Features
