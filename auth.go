@@ -10,16 +10,29 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
-const (
-	tenant = "common"
-)
+// resolveTenant returns the Entra tenant for the auth endpoints:
+// TENANT_ID from the environment/.env if set, otherwise "common".
+// Single-tenant app registrations must set TENANT_ID — the /common
+// endpoint rejects them with AADSTS50059.
+func resolveTenant() string {
+	_ = godotenv.Load()
+	if t := os.Getenv("TENANT_ID"); t != "" {
+		return t
+	}
+	return "common"
+}
 
-var (
-	deviceCodeURL = fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/devicecode", tenant)
-	tokenURL      = fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenant)
-)
+func deviceCodeURL() string {
+	return fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/devicecode", resolveTenant())
+}
+
+func tokenURL() string {
+	return fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", resolveTenant())
+}
 
 // DeviceCodeResponse is the response from the device code endpoint.
 type DeviceCodeResponse struct {
@@ -98,7 +111,7 @@ func StartDeviceFlow(clientID, scopes string) (*DeviceCodeResponse, error) {
 		"client_id": {clientID},
 		"scope":     {scopes},
 	}
-	resp, err := http.PostForm(deviceCodeURL, form)
+	resp, err := http.PostForm(deviceCodeURL(), form)
 	if err != nil {
 		return nil, fmt.Errorf("device code request failed: %w", err)
 	}
@@ -129,7 +142,7 @@ func PollForToken(clientID, deviceCode string, interval int) (*TokenResponse, er
 			"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
 			"device_code": {deviceCode},
 		}
-		resp, err := http.PostForm(tokenURL, form)
+		resp, err := http.PostForm(tokenURL(), form)
 		if err != nil {
 			return nil, fmt.Errorf("token poll request failed: %w", err)
 		}
@@ -174,7 +187,7 @@ func RefreshAccessToken(clientID, refreshToken, scopes string) (*TokenResponse, 
 		"refresh_token": {refreshToken},
 		"scope":         {scopes},
 	}
-	resp, err := http.PostForm(tokenURL, form)
+	resp, err := http.PostForm(tokenURL(), form)
 	if err != nil {
 		return nil, fmt.Errorf("refresh request failed: %w", err)
 	}
