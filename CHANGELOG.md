@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.2.7] - 2026-08-28
+
+### Features
+
+- *(auth)* **Support single-tenant app registrations via TENANT_ID env var** - ([6a366f6](https://github.com/nospor/teams-tui-go/commit/6a366f63be71fdf5b43fa26d0db1cbd6a2b02611))
+
+
+
+### Other
+
+- **Merge pull request #2 from photuris/feat/configurable-tenant-id
+
+feat(auth): support single-tenant app registrations via TENANT_ID env var** - ([43ba753](https://github.com/nospor/teams-tui-go/commit/43ba753774040f835875ce607e7a33349c9ad929))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.2.6 [skip ci]** - ([c8a9aa1](https://github.com/nospor/teams-tui-go/commit/c8a9aa1f7bbe7e7f4a9fc20a00b33b0891be0a3f))
+
+
+
 ## [1.2.6] - 2026-08-19
 
 ### Bug Fixes
