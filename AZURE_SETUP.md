@@ -217,6 +217,9 @@ The new device code login will request all permissions for your currently enable
 **"AADSTS50020: User account from identity provider does not exist in tenant"**
 → Make sure you selected **"Multitenant and personal Microsoft accounts"** in step 2, not "Single tenant".
 
+**"AADSTS50059: No tenant-identifying information found"**
+→ Your app registration is **single tenant**, which the default `/common` endpoint rejects. Either switch the registration to multitenant, or set `TENANT_ID=<your-tenant-id>` in `.env` (or the environment) to authenticate against your tenant directly.
+
 **"AADSTS7000218: The request body must contain the following parameter: 'client_assertion' or 'client_secret'"**
 → Make sure **"Allow public client flows"** is set to **Yes** in the Authentication settings (step 3).
 
