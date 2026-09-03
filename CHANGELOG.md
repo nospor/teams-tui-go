@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.2.8] - 2026-09-03
+
+### Features
+
+- *(messages)* **Show previews for forwarded message attachments** - ([2d05325](https://github.com/nospor/teams-tui-go/commit/2d05325ae2a246cbf887ca53faa0c1fbe9c85a15))
+
+
+> Render forwardedMessageReference attachments as inline quote blocks with
+> sender, timestamp, and message text, resolving source chat names from
+> the loaded chat list. Hide these from the attachment popup since they
+> are shown inline like reply quotes.
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.2.7 [skip ci]** - ([b4d573c](https://github.com/nospor/teams-tui-go/commit/b4d573c6520dc96a0c46e0a0b46d2826ae618166))
+
+
+
 ## [1.2.7] - 2026-08-28
 
 ### Features
