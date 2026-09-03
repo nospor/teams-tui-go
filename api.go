@@ -105,7 +105,7 @@ func (msg *Message) GetPlainText() string {
 		msg.PlainTextCached = &text
 		return text
 	}
-	text := HTMLToText(*msg.Body.Content, msg.Attachments, msg.Mentions)
+	text := HTMLToText(*msg.Body.Content, msg.Attachments, msg.Mentions, nil)
 	msg.PlainTextCached = &text
 	return text
 }
@@ -1806,7 +1806,8 @@ var urlRegex = regexp.MustCompile(`https?://[^\s<>"]+`)
 // HTMLToText converts a Teams message HTML body to plain text suitable for
 // terminal display. It returns the rendered text and a lipgloss-compatible
 // styled string (where special elements are coloured).
-func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []MessageMention) string {
+// chatNames maps conversation IDs to display names for forwarded-message quotes.
+func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []MessageMention, chatNames map[string]string) string {
 	if htmlContent == "" {
 		return ""
 	}
@@ -2005,20 +2006,23 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 					}
 				}
 				if att, ok := attByID[attID]; ok {
-					if att.ContentType != nil && *att.ContentType == "messageReference" {
-						// Render a quoted-message block: ▎ Sender: preview text
-						if att.Content != nil {
-							quote := renderMessageReference(*att.Content)
-							if quote != "" {
-								if sb.Len() > 0 && lastChar != '\n' {
-									sb.WriteRune('\n')
-								}
-								sb.WriteString(quote)
+					if att.Content != nil {
+						quote := attachmentQuoteLine(att, chatNames)
+						if quote != "" {
+							if sb.Len() > 0 && lastChar != '\n' {
 								sb.WriteRune('\n')
-								lastChar = '\n'
 							}
+							sb.WriteString(quote)
+							sb.WriteRune('\n')
+							lastChar = '\n'
+							continue
 						}
-						continue
+					}
+					if att.ContentType != nil {
+						ct := strings.ToLower(*att.ContentType)
+						if ct == "messagereference" || ct == "forwardedmessagereference" {
+							continue
+						}
 					}
 					orangeText := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8700")).Render("Attachment")
 					sb.WriteString("📎 " + orangeText)
@@ -2298,6 +2302,68 @@ func SearchUsers(accessToken, query string) ([]User, error) {
 	return r.Value, nil
 }
 
+// attachmentQuoteLine renders a messageReference or forwardedMessageReference
+// attachment as a styled quote block. Returns empty for other attachment types.
+func attachmentQuoteLine(att MessageAttachment, chatNames map[string]string) string {
+	if att.Content == nil || att.ContentType == nil {
+		return ""
+	}
+	switch strings.ToLower(*att.ContentType) {
+	case "messagereference":
+		return renderMessageReference(*att.Content)
+	case "forwardedmessagereference":
+		return renderForwardedMessageReference(*att.Content, chatNames)
+	default:
+		return ""
+	}
+}
+
+// formatQuoteBlock renders a styled terminal quote: "▎ [Chat] Sender [date]: preview".
+func formatQuoteBlock(sender, timeStr, chatLabel, preview string) string {
+	preview = strings.TrimSpace(preview)
+	if preview == "" {
+		return ""
+	}
+
+	const maxPreview = 120
+	if len([]rune(preview)) > maxPreview {
+		runes := []rune(preview)
+		preview = string(runes[:maxPreview]) + "…"
+	}
+
+	quoteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6C7A89"))
+	barStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#4A90D9")).Bold(true)
+	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#7EC8E3")).Bold(true)
+	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#4A5568"))
+	chatStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#A0B4C8")).Bold(true)
+
+	bar := barStyle.Render("▎")
+
+	var meta string
+	if chatLabel != "" {
+		meta += chatStyle.Render("[" + chatLabel + "] ")
+	}
+	if sender != "" {
+		meta += nameStyle.Render(sender)
+	}
+	if timeStr != "" {
+		meta += timeStyle.Render(" [" + timeStr + "]")
+	}
+
+	if meta != "" {
+		return bar + " " + meta + quoteStyle.Render(": "+preview)
+	}
+	return bar + " " + quoteStyle.Render(preview)
+}
+
+func formatQuoteTime(t time.Time) string {
+	now := time.Now()
+	if t.Year() == now.Year() {
+		return t.Format("2 Jan 15:04")
+	}
+	return t.Format("2 Jan 2006 15:04")
+}
+
 // renderMessageReference parses a messageReference attachment content JSON and
 // returns a styled terminal quote block: "▎ SenderName [2 Jan 15:04]: message preview".
 // Returns an empty string if the content cannot be parsed.
@@ -2315,49 +2381,59 @@ func renderMessageReference(content string) string {
 		return ""
 	}
 
-	preview := strings.TrimSpace(ref.MessagePreview)
-	if preview == "" {
+	var timeStr string
+	// Teams message IDs are Unix timestamps in milliseconds.
+	if ms, err := strconv.ParseInt(ref.MessageID, 10, 64); err == nil && ms > 0 {
+		timeStr = formatQuoteTime(time.UnixMilli(ms).Local())
+	}
+
+	sender := ""
+	if ref.MessageSender.User != nil {
+		sender = ref.MessageSender.User.DisplayName
+	}
+	return formatQuoteBlock(sender, timeStr, "", ref.MessagePreview)
+}
+
+// renderForwardedMessageReference parses a forwardedMessageReference attachment
+// and returns a styled quote with optional source-chat name from chatNames.
+func renderForwardedMessageReference(content string, chatNames map[string]string) string {
+	var ref struct {
+		OriginalMessageContent string `json:"originalMessageContent"`
+		OriginalConversationID string `json:"originalConversationId"`
+		OriginalSentDateTime   string `json:"originalSentDateTime"`
+		OriginalMessageSender  struct {
+			User *struct {
+				DisplayName string `json:"displayName"`
+			} `json:"user"`
+		} `json:"originalMessageSender"`
+	}
+	if err := json.Unmarshal([]byte(content), &ref); err != nil {
 		return ""
 	}
 
-	// Truncate very long previews.
-	const maxPreview = 120
-	if len([]rune(preview)) > maxPreview {
-		runes := []rune(preview)
-		preview = string(runes[:maxPreview]) + "…"
-	}
+	preview := stripBasicHTML(ref.OriginalMessageContent)
 
-	// Teams message IDs are Unix timestamps in milliseconds.
 	var timeStr string
-	if ms, err := strconv.ParseInt(ref.MessageID, 10, 64); err == nil && ms > 0 {
-		t := time.UnixMilli(ms).Local()
-		now := time.Now()
-		if t.Year() == now.Year() {
-			timeStr = t.Format("2 Jan 15:04")
-		} else {
-			timeStr = t.Format("2 Jan 2006 15:04")
+	if ref.OriginalSentDateTime != "" {
+		if t, err := time.Parse(time.RFC3339Nano, ref.OriginalSentDateTime); err == nil {
+			timeStr = formatQuoteTime(t.Local())
+		} else if t, err := time.Parse(time.RFC3339, ref.OriginalSentDateTime); err == nil {
+			timeStr = formatQuoteTime(t.Local())
 		}
 	}
 
-	quoteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6C7A89"))
-	barStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#4A90D9")).Bold(true)
-	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#7EC8E3")).Bold(true)
-	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#4A5568"))
-
-	bar := barStyle.Render("▎")
-
-	var meta string
-	if ref.MessageSender.User != nil && ref.MessageSender.User.DisplayName != "" {
-		meta = nameStyle.Render(ref.MessageSender.User.DisplayName)
-	}
-	if timeStr != "" {
-		meta += timeStyle.Render(" [" + timeStr + "]")
+	chatLabel := ""
+	if chatNames != nil && ref.OriginalConversationID != "" {
+		if name, ok := chatNames[ref.OriginalConversationID]; ok && name != "" {
+			chatLabel = name
+		}
 	}
 
-	if meta != "" {
-		return bar + " " + meta + quoteStyle.Render(": "+preview)
+	sender := ""
+	if ref.OriginalMessageSender.User != nil {
+		sender = ref.OriginalMessageSender.User.DisplayName
 	}
-	return bar + " " + quoteStyle.Render(preview)
+	return formatQuoteBlock(sender, timeStr, chatLabel, preview)
 }
 
 // GetOrCreateOneOnOneChat creates a new 1-on-1 chat with the user specified by their UPN (email).

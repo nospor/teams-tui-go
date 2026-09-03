@@ -2415,7 +2415,7 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		if m.app.MessageSelectedIndex < len(m.app.Messages) {
 			msgObj := m.app.Messages[m.app.MessageSelectedIndex]
 			if msgObj.Body != nil && msgObj.Body.Content != nil {
-				text := stripANSI(HTMLToText(*msgObj.Body.Content, msgObj.Attachments, msgObj.Mentions))
+				text := stripANSI(HTMLToText(*msgObj.Body.Content, msgObj.Attachments, msgObj.Mentions, nil))
 				if err := clipboard.WriteAll(text); err == nil {
 					m.app.SetStatus("Message copied to clipboard", 3*time.Second)
 				} else {
@@ -3204,7 +3204,7 @@ func (m Model) renderRightPanel(w, h int) string {
 		// Build a one-line preview using the same style as renderMessageReference.
 		preview := ""
 		if ref.Body != nil && ref.Body.Content != nil {
-			preview = stripANSI(HTMLToText(*ref.Body.Content, ref.Attachments, ref.Mentions))
+			preview = stripANSI(HTMLToText(*ref.Body.Content, ref.Attachments, ref.Mentions, nil))
 		}
 		preview = strings.ReplaceAll(preview, "\n", " ")
 		const maxPrev = 80
@@ -3948,6 +3948,29 @@ func wordWrap(s string, maxW int) []string {
 	return lines
 }
 
+// conversationNameMap builds a lookup of chat ID → display name for forwarded-message quotes.
+func (m Model) conversationNameMap() map[string]string {
+	out := make(map[string]string, len(m.app.Chats))
+	for _, c := range m.app.Chats {
+		if c.CachedDisplayName != nil && *c.CachedDisplayName != "" {
+			out[c.ID] = *c.CachedDisplayName
+		}
+	}
+	return out
+}
+
+// messagePlainText renders a message body with chat-name resolution for forwarded quotes.
+func (m Model) messagePlainText(msg *Message) string {
+	msg.ProcessInlineImages()
+	if msg.Body == nil || msg.Body.Content == nil {
+		return ""
+	}
+	if *msg.Body.Content == "<systemEventMessage/>" {
+		return "── [system event] ──"
+	}
+	return HTMLToText(*msg.Body.Content, msg.Attachments, msg.Mentions, m.conversationNameMap())
+}
+
 func (m Model) getWrappedMessageLines(msg *Message, maxW int, searchQuery string, searchActive bool) []string {
 	queryKey := ""
 	if searchActive {
@@ -3957,7 +3980,7 @@ func (m Model) getWrappedMessageLines(msg *Message, maxW int, searchQuery string
 		return msg.WrappedLinesCached
 	}
 
-	body := msg.GetPlainText()
+	body := m.messagePlainText(msg)
 	if searchActive && searchQuery != "" {
 		body = highlightQuery(body, searchQuery)
 	}
@@ -4397,7 +4420,7 @@ func (m *Model) notify(senderName string, msg Message) {
 	body := ""
 	if m.app.NotificationShowPreview {
 		if msg.Body != nil && msg.Body.Content != nil {
-			body = stripANSI(HTMLToText(*msg.Body.Content, msg.Attachments, msg.Mentions))
+			body = stripANSI(HTMLToText(*msg.Body.Content, msg.Attachments, msg.Mentions, m.conversationNameMap()))
 			// Remove newlines and collapse spaces for a cleaner notification body.
 			body = strings.ReplaceAll(body, "\n", " ")
 			body = strings.Join(strings.Fields(body), " ")
@@ -5080,7 +5103,7 @@ func (m Model) handleSearchPopupNavigationKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		if len(m.app.SearchPopupResults) > 0 && m.app.SearchPopupSelectedIndex < len(m.app.SearchPopupResults) {
 			msgObj := m.app.SearchPopupResults[m.app.SearchPopupSelectedIndex].Message
 			if msgObj.Body != nil && msgObj.Body.Content != nil {
-				text := stripANSI(HTMLToText(*msgObj.Body.Content, msgObj.Attachments, msgObj.Mentions))
+				text := stripANSI(HTMLToText(*msgObj.Body.Content, msgObj.Attachments, msgObj.Mentions, nil))
 				if err := clipboard.WriteAll(text); err == nil {
 					m.app.SetSearchStatus("Message copied to clipboard", 3*time.Second)
 				} else {
@@ -5745,12 +5768,15 @@ func (m Model) renderUserSearchPopup(w, h int) string {
 }
 
 // viewableAttachments returns the subset of a message's attachments that should
-// be shown in the view popup — i.e. real files, excluding quoted-reply references
-// (contentType "messageReference") which are already rendered inline as blockquotes.
+// be shown in the view popup — i.e. real files, excluding quoted-reply and
+// forwarded-message references which are already rendered inline as blockquotes.
 func viewableAttachments(msg Message) []MessageAttachment {
 	var out []MessageAttachment
 	for _, att := range msg.Attachments {
 		if att.ContentType != nil && strings.EqualFold(*att.ContentType, "messageReference") {
+			continue
+		}
+		if att.ContentType != nil && strings.EqualFold(*att.ContentType, "forwardedMessageReference") {
 			continue
 		}
 		out = append(out, att)
@@ -5926,7 +5952,7 @@ func (m Model) renderMessagePopup(w, h int) string {
 		bodyMaxH = 4
 	}
 
-	body := msg.GetPlainText()
+	body := m.messagePlainText(&msg)
 	var wrappedBody []string
 	if body != "" {
 		wrappedBody = wordWrap(body, contentW)

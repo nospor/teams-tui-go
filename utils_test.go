@@ -162,7 +162,7 @@ func TestExtractAndProcessInlineImages(t *testing.T) {
 	}
 
 	// Test HTMLToText inline image naming
-	plainText := HTMLToText(htmlContent, msg.Attachments, nil)
+	plainText := HTMLToText(htmlContent, msg.Attachments, nil, nil)
 	if !strings.Contains(plainText, "My screenshot.png") {
 		t.Errorf("expected plainText to contain 'My screenshot.png', got %q", plainText)
 	}
@@ -184,7 +184,7 @@ func TestHTMLToTextMentions(t *testing.T) {
 
 	// Case 1: Mention without '@' prefix
 	html1 := `Hello <at id="0">John Doe</at>!`
-	res1 := HTMLToText(html1, nil, nil)
+	res1 := HTMLToText(html1, nil, nil, nil)
 	plain1 := stripANSI(res1)
 	expected1 := "Hello @John Doe!"
 	if plain1 != expected1 {
@@ -197,7 +197,7 @@ func TestHTMLToTextMentions(t *testing.T) {
 
 	// Case 2: Mention that already starts with '@'
 	html2 := `Hello <at id="1">@Jane Doe</at>!`
-	res2 := HTMLToText(html2, nil, nil)
+	res2 := HTMLToText(html2, nil, nil, nil)
 	plain2 := stripANSI(res2)
 	expected2 := "Hello @Jane Doe!"
 	if plain2 != expected2 {
@@ -206,7 +206,7 @@ func TestHTMLToTextMentions(t *testing.T) {
 
 	// Case 3: Mention with non-breaking space
 	html3 := `Hello <at id="2">John&nbsp;Doe</at>!`
-	res3 := HTMLToText(html3, nil, nil)
+	res3 := HTMLToText(html3, nil, nil, nil)
 	plain3 := stripANSI(res3)
 	expected3 := "Hello @John\u00a0Doe!" // \u00a0 is nbsp
 	if plain3 != expected3 {
@@ -215,7 +215,7 @@ func TestHTMLToTextMentions(t *testing.T) {
 
 	// Case 4: Mention split into two tags with same ID
 	html4 := `Hello <at id="0">John</at> <at id="0">Doe</at>!`
-	res4 := HTMLToText(html4, nil, nil)
+	res4 := HTMLToText(html4, nil, nil, nil)
 	plain4 := stripANSI(res4)
 	expected4 := "Hello @John Doe!"
 	if plain4 != expected4 {
@@ -246,7 +246,7 @@ func TestHTMLToTextMentions(t *testing.T) {
 			},
 		},
 	}
-	res5 := HTMLToText(html5, nil, mentions5)
+	res5 := HTMLToText(html5, nil, mentions5, nil)
 	plain5 := stripANSI(res5)
 	expected5 := "Hello @John Doe!"
 	if plain5 != expected5 {
@@ -262,7 +262,7 @@ func TestHTMLToTextStrikethrough(t *testing.T) {
 
 	// Single strikethrough span: must be exactly one SGR 9 pair, not
 	// per-character toggling.
-	single := HTMLToText(`<p>closed <s>SRDS-73 </s>.</p>`, nil, nil)
+	single := HTMLToText(`<p>closed <s>SRDS-73 </s>.</p>`, nil, nil, nil)
 	if strings.Count(single, "\x1b[9m") != 1 {
 		t.Errorf("expected 1 strikethrough opening, got %d in %q", strings.Count(single, "\x1b[9m"), single)
 	}
@@ -275,7 +275,7 @@ func TestHTMLToTextStrikethrough(t *testing.T) {
 
 	// Strikethrough nested inside a hyperlink (e.g. a closed ticket). The
 	// link styling must not corrupt the embedded strikethrough sequence.
-	linked := HTMLToText(`<p>closed <a href="https://example.com/SRDS-73"><s>SRDS-73 </s></a>.</p>`, nil, nil)
+	linked := HTMLToText(`<p>closed <a href="https://example.com/SRDS-73"><s>SRDS-73 </s></a>.</p>`, nil, nil, nil)
 	if strings.Contains(linked, "\x1b[0m\x1b[9m") {
 		t.Errorf("found per-character toggling in %q", linked)
 	}
@@ -288,7 +288,7 @@ func TestHTMLToTextStrikethrough(t *testing.T) {
 	}
 
 	// Multiple spans (as in the real "SRDS-73" message) still strip cleanly.
-	multi := HTMLToText(`<p>I see you have closed <s>SRDS-73 </s><s>.</s> Is that all?</p>`, nil, nil)
+	multi := HTMLToText(`<p>I see you have closed <s>SRDS-73 </s><s>.</s> Is that all?</p>`, nil, nil, nil)
 	plain := stripANSI(multi)
 	expected := "I see you have closed SRDS-73 . Is that all?"
 	if plain != expected {
@@ -590,6 +590,56 @@ func TestGetMentionQuery(t *testing.T) {
 	}
 }
 
+func TestRenderForwardedMessageReference(t *testing.T) {
+	content := `{"originalMessageId":"1727881360458","originalMessageContent":"\n<p>hello world</p>\n","originalConversationId":"chat-planning","originalSentDateTime":"2024-10-02T15:02:40.458+00:00","originalMessageSender":{"user":{"displayName":"Jane Smith"}}}`
 
+	quote := renderForwardedMessageReference(content, nil)
+	if quote == "" {
+		t.Fatal("expected non-empty quote")
+	}
+	if !strings.Contains(stripANSI(quote), "hello world") {
+		t.Errorf("expected preview text in quote, got %q", stripANSI(quote))
+	}
+	if !strings.Contains(stripANSI(quote), "Jane Smith") {
+		t.Errorf("expected sender in quote, got %q", stripANSI(quote))
+	}
+
+	chatNames := map[string]string{"chat-planning": "SRDS Planning"}
+	quoteWithChat := renderForwardedMessageReference(content, chatNames)
+	if !strings.Contains(stripANSI(quoteWithChat), "SRDS Planning") {
+		t.Errorf("expected chat name in quote, got %q", stripANSI(quoteWithChat))
+	}
+}
+
+func TestHTMLToTextForwardedMessageReference(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+	fwdType := "forwardedMessageReference"
+	attID := "1727881360458"
+	content := `{"originalMessageId":"1727881360458","originalMessageContent":"<p>custom FTP accounts</p>","originalConversationId":"chat-1","originalSentDateTime":"2024-09-02T19:25:00+00:00","originalMessageSender":{"user":{"displayName":"Jun"}}}`
+
+	html := `<p>Hi All, see below:</p><attachment id="1727881360458"></attachment>`
+	attachments := []MessageAttachment{{
+		ID:          attID,
+		ContentType: &fwdType,
+		Content:     strPtr(content),
+	}}
+
+	text := stripANSI(HTMLToText(html, attachments, nil, map[string]string{"chat-1": "Other Chat"}))
+	if !strings.Contains(text, "Hi All") {
+		t.Errorf("expected main message text, got %q", text)
+	}
+	if !strings.Contains(text, "custom FTP accounts") {
+		t.Errorf("expected forwarded preview, got %q", text)
+	}
+	if !strings.Contains(text, "Jun") {
+		t.Errorf("expected forwarded sender, got %q", text)
+	}
+	if !strings.Contains(text, "Other Chat") {
+		t.Errorf("expected source chat name, got %q", text)
+	}
+	if strings.Contains(text, "📎") {
+		t.Errorf("did not expect generic attachment marker, got %q", text)
+	}
+}
 
 
