@@ -86,13 +86,13 @@ fmt.Println(&#34;ok&#34;)</code></pre>`,
 
 func TestHTMLToMarkdownConsecutiveURLs(t *testing.T) {
 	// Teams HTML often contains formatting newlines between block elements.
-	html := `<p>Hi Dana, some questions in tickets</p>
+	html := `<p>Hi Alex, some questions in tickets</p>
 <p>&nbsp;</p>
-<p><a href="https://adwanted.youtrack.cloud/issue/SRDS-332">https://adwanted.youtrack.cloud/issue/SRDS-332</a></p>
-<p><a href="https://adwanted.youtrack.cloud/issue/SRDS-338">https://adwanted.youtrack.cloud/issue/SRDS-338</a></p>
-<p><a href="https://adwanted.youtrack.cloud/issue/SRDS-340">https://adwanted.youtrack.cloud/issue/SRDS-340</a></p>`
+<p><a href="https://tracker.example.com/issue/PROJ-101">https://tracker.example.com/issue/PROJ-101</a></p>
+<p><a href="https://tracker.example.com/issue/PROJ-102">https://tracker.example.com/issue/PROJ-102</a></p>
+<p><a href="https://tracker.example.com/issue/PROJ-103">https://tracker.example.com/issue/PROJ-103</a></p>`
 
-	expected := "Hi Dana, some questions in tickets\n\nhttps://adwanted.youtrack.cloud/issue/SRDS-332\nhttps://adwanted.youtrack.cloud/issue/SRDS-338\nhttps://adwanted.youtrack.cloud/issue/SRDS-340"
+	expected := "Hi Alex, some questions in tickets\n\nhttps://tracker.example.com/issue/PROJ-101\nhttps://tracker.example.com/issue/PROJ-102\nhttps://tracker.example.com/issue/PROJ-103"
 
 	got := HTMLToMarkdown(html, nil)
 	if got != expected {
@@ -178,7 +178,7 @@ func TestWrapBodyHTMLForInlineAttachments(t *testing.T) {
 }
 
 func TestHTMLToMarkdownURLRoundTrip(t *testing.T) {
-	input := "Hi Dana, ticket links\n\nhttps://adwanted.youtrack.cloud/issue/SRDS-332\nhttps://adwanted.youtrack.cloud/issue/SRDS-338\nhttps://adwanted.youtrack.cloud/issue/SRDS-340"
+	input := "Hi Alex, ticket links\n\nhttps://tracker.example.com/issue/PROJ-101\nhttps://tracker.example.com/issue/PROJ-102\nhttps://tracker.example.com/issue/PROJ-103"
 
 	got := HTMLToMarkdown(markdownToHTML(input), nil)
 	if got != input {

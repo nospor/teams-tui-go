@@ -263,7 +263,7 @@ func TestHTMLToTextStrikethrough(t *testing.T) {
 
 	// Single strikethrough span: must be exactly one SGR 9 pair, not
 	// per-character toggling.
-	single := HTMLToText(`<p>closed <s>SRDS-73 </s>.</p>`, nil, nil, nil)
+	single := HTMLToText(`<p>closed <s>PROJ-42 </s>.</p>`, nil, nil, nil)
 	if strings.Count(single, "\x1b[9m") != 1 {
 		t.Errorf("expected 1 strikethrough opening, got %d in %q", strings.Count(single, "\x1b[9m"), single)
 	}
@@ -276,7 +276,7 @@ func TestHTMLToTextStrikethrough(t *testing.T) {
 
 	// Strikethrough nested inside a hyperlink (e.g. a closed ticket). The
 	// link styling must not corrupt the embedded strikethrough sequence.
-	linked := HTMLToText(`<p>closed <a href="https://example.com/SRDS-73"><s>SRDS-73 </s></a>.</p>`, nil, nil, nil)
+	linked := HTMLToText(`<p>closed <a href="https://example.com/PROJ-42"><s>PROJ-42 </s></a>.</p>`, nil, nil, nil)
 	if strings.Contains(linked, "\x1b[0m\x1b[9m") {
 		t.Errorf("found per-character toggling in %q", linked)
 	}
@@ -288,10 +288,10 @@ func TestHTMLToTextStrikethrough(t *testing.T) {
 		t.Errorf("expected a combined strikethrough+underline sequence in %q", linked)
 	}
 
-	// Multiple spans (as in the real "SRDS-73" message) still strip cleanly.
-	multi := HTMLToText(`<p>I see you have closed <s>SRDS-73 </s><s>.</s> Is that all?</p>`, nil, nil, nil)
+	// Multiple spans (as in a closed-ticket message) still strip cleanly.
+	multi := HTMLToText(`<p>I see you have closed <s>PROJ-42 </s><s>.</s> Is that all?</p>`, nil, nil, nil)
 	plain := stripANSI(multi)
-	expected := "I see you have closed SRDS-73 . Is that all?"
+	expected := "I see you have closed PROJ-42 . Is that all?"
 	if plain != expected {
 		t.Errorf("expected %q, got %q", expected, plain)
 	}
@@ -605,9 +605,9 @@ func TestRenderForwardedMessageReference(t *testing.T) {
 		t.Errorf("expected sender in quote, got %q", stripANSI(quote))
 	}
 
-	chatNames := map[string]string{"chat-planning": "SRDS Planning"}
+	chatNames := map[string]string{"chat-planning": "Sprint Planning"}
 	quoteWithChat := renderForwardedMessageReference(content, chatNames)
-	if !strings.Contains(stripANSI(quoteWithChat), "SRDS Planning") {
+	if !strings.Contains(stripANSI(quoteWithChat), "Sprint Planning") {
 		t.Errorf("expected chat name in quote, got %q", stripANSI(quoteWithChat))
 	}
 }
