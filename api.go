@@ -1212,8 +1212,40 @@ func wrapBodyHTMLForInlineAttachments(htmlContent string) string {
 	return "<p>" + htmlContent + "</p>"
 }
 
+// referenceAttachmentsFromMessage returns SharePoint/OneDrive reference file attachments from a message.
+func referenceAttachmentsFromMessage(msg Message) []MessageAttachment {
+	var refs []MessageAttachment
+	for _, att := range msg.Attachments {
+		if att.ContentType == nil || strings.ToLower(*att.ContentType) != "reference" {
+			continue
+		}
+		if att.ContentURL == nil || att.Name == nil {
+			continue
+		}
+		refs = append(refs, att)
+	}
+	return refs
+}
+
+// inlineImageURLsFromMessage returns inline <img> src URLs in document order.
+func inlineImageURLsFromMessage(msg Message) []string {
+	if msg.Body == nil || msg.Body.Content == nil {
+		return nil
+	}
+	inline := ExtractInlineImages(*msg.Body.Content)
+	urls := make([]string, 0, len(inline))
+	for _, att := range inline {
+		if att.ContentURL != nil && *att.ContentURL != "" {
+			urls = append(urls, *att.ContentURL)
+		}
+	}
+	return urls
+}
+
 // formatMessageBodyWithImagesAndFiles prepares the payload body and attachments for inline images and file references.
-func formatMessageBodyWithImagesAndFiles(content string, members []ChatMember, images []PastedImage, referenceAttachments []MessageAttachment) (map[string]any, []map[string]any, []map[string]any, []map[string]any) {
+// existingInlineImageURLs maps [Image N] placeholders (1-based) to original hosted-content URLs when editing a message.
+// When forUpdate is true, reference attachments not referenced in the body are omitted instead of appended at the end.
+func formatMessageBodyWithImagesAndFiles(content string, members []ChatMember, images []PastedImage, referenceAttachments []MessageAttachment, existingInlineImageURLs []string, forUpdate bool) (map[string]any, []map[string]any, []map[string]any, []map[string]any) {
 	content = replaceEmoticons(content)
 	content, fileMarkers := markFilePlaceholders(content, referenceAttachments)
 
@@ -1228,9 +1260,9 @@ func formatMessageBodyWithImagesAndFiles(content string, members []ChatMember, i
 	htmlContent, mentions := parseMentions(htmlContent, members)
 
 	var hostedContents []map[string]any
-	usedImages := make(map[int]bool)
+	usedNewImages := make(map[int]bool)
 
-	// Replace [Image N] with hostedContents reference
+	// Replace [Image N] with hostedContents reference or preserve existing inline image URLs.
 	reImg := regexp.MustCompile(`\[[Ii]mage\s+(\d+)\]`)
 	htmlContent = reImg.ReplaceAllStringFunc(htmlContent, func(match string) string {
 		sub := reImg.FindStringSubmatch(match)
@@ -1239,19 +1271,27 @@ func formatMessageBodyWithImagesAndFiles(content string, members []ChatMember, i
 		}
 		var idx int
 		_, err := fmt.Sscanf(sub[1], "%d", &idx)
-		if err != nil || idx < 1 || idx > len(images) {
+		if err != nil || idx < 1 {
 			return match
 		}
-		usedImages[idx-1] = true
+		if idx <= len(existingInlineImageURLs) {
+			return fmt.Sprintf(`<img src="%s" />`, stdhtml.EscapeString(existingInlineImageURLs[idx-1]))
+		}
+		newIdx := idx - len(existingInlineImageURLs)
+		if newIdx < 1 || newIdx > len(images) {
+			return match
+		}
+		usedNewImages[newIdx-1] = true
 		return fmt.Sprintf(`<img src="../hostedContents/%d/$value" />`, idx)
 	})
 
-	// Only include images that are actually referenced in the HTML body.
+	// Only include newly pasted images that are actually referenced in the HTML body.
 	for i, img := range images {
-		if usedImages[i] {
+		if usedNewImages[i] {
+			hostedID := len(existingInlineImageURLs) + i + 1
 			b64Content := base64.StdEncoding.EncodeToString(img.Bytes)
 			hostedContents = append(hostedContents, map[string]any{
-				"@microsoft.graph.temporaryId": fmt.Sprintf("%d", i+1),
+				"@microsoft.graph.temporaryId": fmt.Sprintf("%d", hostedID),
 				"contentBytes":                 b64Content,
 				"contentType":                  img.ContentType,
 			})
@@ -1266,6 +1306,9 @@ func formatMessageBodyWithImagesAndFiles(content string, members []ChatMember, i
 	// Handle reference attachments
 	var attachmentsPayload []map[string]any
 	for _, att := range referenceAttachments {
+		if forUpdate && !usedFileIDs[att.ID] {
+			continue
+		}
 		attachmentsPayload = append(attachmentsPayload, map[string]any{
 			"id":          att.ID,
 			"contentType": "reference",
@@ -1273,7 +1316,7 @@ func formatMessageBodyWithImagesAndFiles(content string, members []ChatMember, i
 			"name":        *att.Name,
 		})
 
-		if !usedFileIDs[att.ID] {
+		if !forUpdate && !usedFileIDs[att.ID] {
 			htmlContent += fmt.Sprintf(`<br /><attachment id="%s"></attachment>`, att.ID)
 		}
 	}
@@ -1288,6 +1331,15 @@ func formatMessageBodyWithImagesAndFiles(content string, members []ChatMember, i
 	return bodyPayload, mentions, hostedContents, attachmentsPayload
 }
 
+// editContentToHTML converts edited markdown back to Teams HTML, preserving attachments and inline images.
+func editContentToHTML(content string, members []ChatMember, images []PastedImage, referenceAttachments []MessageAttachment, existingInlineImageURLs []string) string {
+	body, _, _, _ := formatMessageBodyWithImagesAndFiles(content, members, images, referenceAttachments, existingInlineImageURLs, true)
+	if html, ok := body["content"].(string); ok {
+		return html
+	}
+	return markdownToHTML(content)
+}
+
 // SendMessage posts a message to the given chat.
 func SendMessage(accessToken, chatID, content string, members []ChatMember, images []PastedImage, files []PendingFile) error {
 	refAttachments, err := uploadChatFiles(accessToken, files, members)
@@ -1295,7 +1347,7 @@ func SendMessage(accessToken, chatID, content string, members []ChatMember, imag
 		return err
 	}
 
-	body, mentions, hostedContents, attachments := formatMessageBodyWithImagesAndFiles(content, members, images, refAttachments)
+	body, mentions, hostedContents, attachments := formatMessageBodyWithImagesAndFiles(content, members, images, refAttachments, nil, false)
 	payload := map[string]any{
 		"body": body,
 	}
@@ -1319,7 +1371,7 @@ func SendChannelMessage(accessToken, teamID, channelID, content string, members 
 		return err
 	}
 
-	body, mentions, hostedContents, attachments := formatMessageBodyWithImagesAndFiles(content, members, images, refAttachments)
+	body, mentions, hostedContents, attachments := formatMessageBodyWithImagesAndFiles(content, members, images, refAttachments, nil, false)
 	payload := map[string]any{
 		"body": body,
 	}
@@ -1344,7 +1396,7 @@ func SendChannelReply(accessToken, teamID, channelID, rootMsgID, content string,
 		return err
 	}
 
-	body, mentions, hostedContents, attachments := formatMessageBodyWithImagesAndFiles(content, members, images, refAttachments)
+	body, mentions, hostedContents, attachments := formatMessageBodyWithImagesAndFiles(content, members, images, refAttachments, nil, false)
 	payload := map[string]any{
 		"body": body,
 	}
@@ -1412,7 +1464,7 @@ func SendMessageWithReference(accessToken, chatID string, ref *Message, content 
 	// The body MUST be HTML and MUST contain <attachment id="..."></attachment> as a
 	// placeholder so Teams knows where to render the quote bubble.
 	marker := fmt.Sprintf(`<attachment id="%s"></attachment>`, ref.ID)
-	body, mentions, hostedContents, attachments := formatMessageBodyWithImagesAndFiles(content, members, images, refAttachments)
+	body, mentions, hostedContents, attachments := formatMessageBodyWithImagesAndFiles(content, members, images, refAttachments, nil, false)
 	bodyHTML := marker + "\n" + body["content"].(string)
 
 	// Merge the message reference attachment with any file reference attachments
@@ -1457,26 +1509,50 @@ func stripBasicHTML(s string) string {
 	return strings.TrimSpace(sb.String())
 }
 
-// UpdateMessage modifies an existing message in a chat.
-func UpdateMessage(accessToken, chatID, messageID, content string, members []ChatMember) error {
-	body, mentions := formatMessageBody(content, members)
+// UpdateMessage modifies an existing message in a chat, preserving inline images and file attachments.
+func UpdateMessage(accessToken, chatID, messageID, content string, members []ChatMember, images []PastedImage, files []PendingFile, existingRefAttachments []MessageAttachment, existingInlineImageURLs []string) error {
+	newRefAttachments, err := uploadChatFiles(accessToken, files, members)
+	if err != nil {
+		return err
+	}
+	refAttachments := append(existingRefAttachments, newRefAttachments...)
+
+	body, mentions, hostedContents, attachments := formatMessageBodyWithImagesAndFiles(content, members, images, refAttachments, existingInlineImageURLs, true)
 	payload := map[string]any{
 		"body": body,
 	}
 	if len(mentions) > 0 {
 		payload["mentions"] = mentions
+	}
+	if len(hostedContents) > 0 {
+		payload["hostedContents"] = hostedContents
+	}
+	if len(attachments) > 0 {
+		payload["attachments"] = attachments
 	}
 	return graphPatch(accessToken, "/chats/"+chatID+"/messages/"+messageID, payload)
 }
 
-// UpdateChannelMessage modifies an existing message in a Teams channel.
-func UpdateChannelMessage(accessToken, teamID, channelID, messageID, content string, members []ChatMember) error {
-	body, mentions := formatMessageBody(content, members)
+// UpdateChannelMessage modifies an existing message in a Teams channel, preserving inline images and file attachments.
+func UpdateChannelMessage(accessToken, teamID, channelID, messageID, content string, members []ChatMember, images []PastedImage, files []PendingFile, existingRefAttachments []MessageAttachment, existingInlineImageURLs []string) error {
+	newRefAttachments, err := uploadChannelFiles(accessToken, teamID, channelID, files)
+	if err != nil {
+		return err
+	}
+	refAttachments := append(existingRefAttachments, newRefAttachments...)
+
+	body, mentions, hostedContents, attachments := formatMessageBodyWithImagesAndFiles(content, members, images, refAttachments, existingInlineImageURLs, true)
 	payload := map[string]any{
 		"body": body,
 	}
 	if len(mentions) > 0 {
 		payload["mentions"] = mentions
+	}
+	if len(hostedContents) > 0 {
+		payload["hostedContents"] = hostedContents
+	}
+	if len(attachments) > 0 {
+		payload["attachments"] = attachments
 	}
 	return graphPatch(accessToken, fmt.Sprintf("/teams/%s/channels/%s/messages/%s", teamID, channelID, messageID), payload)
 }

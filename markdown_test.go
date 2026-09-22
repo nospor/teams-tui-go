@@ -133,6 +133,17 @@ func TestHTMLToMarkdownPreservesIntentionalBlankLines(t *testing.T) {
 	}
 }
 
+func TestHTMLToMarkdownInlineImages(t *testing.T) {
+	html := `<p>before <img src="https://graph.microsoft.com/v1.0/chats/123/messages/456/hostedContents/abc/$value" alt="shot" /> after</p>`
+	got := HTMLToMarkdown(html, nil)
+	if !strings.Contains(got, "[Image 1]") {
+		t.Fatalf("expected [Image 1] placeholder, got %q", got)
+	}
+	if strings.Contains(got, "<img") {
+		t.Fatalf("expected img tag converted to placeholder, got %q", got)
+	}
+}
+
 func TestHTMLToMarkdownReferenceAttachment(t *testing.T) {
 	strPtr := func(s string) *string { return &s }
 	refType := "reference"

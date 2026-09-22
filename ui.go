@@ -91,10 +91,14 @@ type MsgSendDone struct{ Err error }
 
 // MsgEditDone signals that a message edit (PATCH) has completed.
 type MsgEditDone struct {
-	ChatID    string
-	MessageID string
-	Content   string // the markdown content the user typed (used to derive HTML)
-	Err       error
+	ChatID                  string
+	MessageID               string
+	Content                 string // the markdown content the user typed (used to derive HTML)
+	Members                 []ChatMember
+	Images                  []PastedImage
+	ExistingRefAttachments  []MessageAttachment
+	ExistingInlineImageURLs []string
+	Err                     error
 }
 
 // MsgUserSearchDone is sent when the directory search completes.
@@ -1222,8 +1226,7 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.app.SetStatus("Edit error: "+msg.Err.Error(), 5*time.Second)
 		} else {
-			// Convert the user's markdown to HTML (same path as formatMessageBody).
-			newHTML := markdownToHTML(msg.Content)
+			newHTML := editContentToHTML(msg.Content, msg.Members, msg.Images, msg.ExistingRefAttachments, msg.ExistingInlineImageURLs)
 
 			// Record this as a pending edit. Subsequent MsgMessagesLoaded
 			// handlers will re-apply it after SetMessages, because Graph API
@@ -2126,11 +2129,9 @@ func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case "esc":
 		m.app.InputMode = false
 		m.app.InputBuffer = ""
-		m.app.EditingMessageID = nil
+		m.clearEditingState()
 		m.app.ReplyToMessage = nil
 		m.app.ChannelReplyToID = ""
-		m.app.ComposedImages = nil
-		m.app.ComposedFiles = nil
 		m.textarea.Reset()
 		return m, nil
 
@@ -2155,7 +2156,7 @@ func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				Bytes:       imgBytes,
 				ContentType: contentType,
 			})
-			placeholder := fmt.Sprintf("[Image %d]", len(m.app.ComposedImages))
+			placeholder := fmt.Sprintf("[Image %d]", len(m.app.EditingInlineImageURLs)+len(m.app.ComposedImages)+1)
 			m.textarea.InsertString(placeholder)
 			m.app.InputBuffer = m.textarea.Value()
 			m.app.SetStatus("Image pasted from clipboard", 3*time.Second)
@@ -2195,8 +2196,10 @@ func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			}
 			if m.app.EditingMessageID != nil {
 				msgID := *m.app.EditingMessageID
-				m.app.EditingMessageID = nil
-				return m, updateChannelMessageCmd(m.clientID, ch.teamID, ch.channelID, msgID, content, members)
+				existingRefs := m.app.EditingReferenceAttachments
+				existingInline := m.app.EditingInlineImageURLs
+				m.clearEditingState()
+				return m, updateChannelMessageCmd(m.clientID, ch.teamID, ch.channelID, msgID, content, members, images, files, existingRefs, existingInline)
 			}
 			if m.app.ChannelReplyToID != "" {
 				rootID := m.app.ChannelReplyToID
@@ -2213,8 +2216,10 @@ func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		members := chat.Members
 		if m.app.EditingMessageID != nil {
 			msgID := *m.app.EditingMessageID
-			m.app.EditingMessageID = nil
-			return m, updateMessageCmd(m.clientID, chat.ID, msgID, content, members)
+			existingRefs := m.app.EditingReferenceAttachments
+			existingInline := m.app.EditingInlineImageURLs
+			m.clearEditingState()
+			return m, updateMessageCmd(m.clientID, chat.ID, msgID, content, members, images, files, existingRefs, existingInline)
 		}
 		if m.app.ReplyToMessage != nil {
 			ref := m.app.ReplyToMessage
@@ -2469,13 +2474,7 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			msgObj := m.app.Messages[m.app.MessageSelectedIndex]
 			if m.isOwn(msgObj) {
 				m.app.MessageSelectionMode = false
-				m.app.EditingMessageID = &msgObj.ID
-				m.app.InputMode = true
-				content := ""
-				if msgObj.Body != nil && msgObj.Body.Content != nil {
-					content = HTMLToMarkdown(*msgObj.Body.Content, msgObj.Attachments)
-				}
-				m.textarea.SetValue(content)
+				m.beginEditingMessage(msgObj)
 				return m, m.textarea.Focus()
 			} else {
 				m.app.SetStatus("Cannot edit messages from others", 3*time.Second)
@@ -5383,6 +5382,28 @@ func (m *Model) notifyReaction(chat Chat, msg *Message, newReactions []MessageRe
 			_ = beeep.Notify(title, body, "")
 		}
 	}
+}
+
+func (m *Model) beginEditingMessage(msgObj Message) {
+	m.app.EditingMessageID = &msgObj.ID
+	m.app.EditingReferenceAttachments = referenceAttachmentsFromMessage(msgObj)
+	m.app.EditingInlineImageURLs = inlineImageURLsFromMessage(msgObj)
+	m.app.InputMode = true
+	m.app.ComposedImages = nil
+	m.app.ComposedFiles = nil
+	content := ""
+	if msgObj.Body != nil && msgObj.Body.Content != nil {
+		content = HTMLToMarkdown(*msgObj.Body.Content, msgObj.Attachments)
+	}
+	m.textarea.SetValue(content)
+}
+
+func (m *Model) clearEditingState() {
+	m.app.EditingMessageID = nil
+	m.app.EditingReferenceAttachments = nil
+	m.app.EditingInlineImageURLs = nil
+	m.app.ComposedImages = nil
+	m.app.ComposedFiles = nil
 }
 
 // applyPendingEdits patches any in-memory pending edits into the live message

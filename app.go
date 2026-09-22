@@ -113,7 +113,9 @@ type App struct {
 	MessagePopupStatusUntil    *time.Time
 	NextLink                   string
 	PendingScrollID            string
-	EditingMessageID           *string
+	EditingMessageID              *string
+	EditingReferenceAttachments   []MessageAttachment // reference file attachments from the message being edited
+	EditingInlineImageURLs        []string            // original inline <img> src URLs in placeholder order
 	ReplyToMessage             *Message // set when user presses 'a' to reply-quote a message
 	UrlSelectionMode           bool
 	UrlSelectionOpenMode       bool // true if opening, false if yanking/copying

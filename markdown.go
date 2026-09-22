@@ -246,6 +246,7 @@ func HTMLToMarkdown(htmlContent string, attachments []MessageAttachment) string 
 		attByID[strings.ToLower(a.ID)] = a
 	}
 	var refFileNames []string
+	imgCounter := 0
 	tokenizer := golanghtml.NewTokenizer(strings.NewReader(htmlContent))
 	var sb strings.Builder
 
@@ -354,6 +355,9 @@ func HTMLToMarkdown(htmlContent string, attachments []MessageAttachment) string 
 					lastChar = '\n'
 					tagAddedNewline = true
 				}
+			case "img":
+				imgCounter++
+				write(fmt.Sprintf("[Image %d]", imgCounter))
 			case "attachment":
 				var attID string
 				for _, a := range token.Attr {

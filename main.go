@@ -287,26 +287,26 @@ func deleteChannelMessageCmd(clientID, teamID, channelID, messageID string) tea.
 }
 
 // updateMessageCmd modifies a chat message in the background.
-func updateMessageCmd(clientID, chatID, messageID, content string, members []ChatMember) tea.Cmd {
+func updateMessageCmd(clientID, chatID, messageID, content string, members []ChatMember, images []PastedImage, files []PendingFile, existingRefAttachments []MessageAttachment, existingInlineImageURLs []string) tea.Cmd {
 	return func() tea.Msg {
 		token, err := GetValidTokenSilent(clientID)
 		if err != nil {
-			return MsgEditDone{ChatID: chatID, MessageID: messageID, Content: content, Err: err}
+			return MsgEditDone{ChatID: chatID, MessageID: messageID, Content: content, Members: members, Images: images, ExistingRefAttachments: existingRefAttachments, ExistingInlineImageURLs: existingInlineImageURLs, Err: err}
 		}
-		err = UpdateMessage(token, chatID, messageID, content, members)
-		return MsgEditDone{ChatID: chatID, MessageID: messageID, Content: content, Err: err}
+		err = UpdateMessage(token, chatID, messageID, content, members, images, files, existingRefAttachments, existingInlineImageURLs)
+		return MsgEditDone{ChatID: chatID, MessageID: messageID, Content: content, Members: members, Images: images, ExistingRefAttachments: existingRefAttachments, ExistingInlineImageURLs: existingInlineImageURLs, Err: err}
 	}
 }
 
 // updateChannelMessageCmd modifies a Teams channel message in the background.
-func updateChannelMessageCmd(clientID, teamID, channelID, messageID, content string, members []ChatMember) tea.Cmd {
+func updateChannelMessageCmd(clientID, teamID, channelID, messageID, content string, members []ChatMember, images []PastedImage, files []PendingFile, existingRefAttachments []MessageAttachment, existingInlineImageURLs []string) tea.Cmd {
 	return func() tea.Msg {
 		token, err := GetValidTokenSilent(clientID)
 		if err != nil {
-			return MsgEditDone{ChatID: channelID, MessageID: messageID, Content: content, Err: err}
+			return MsgEditDone{ChatID: channelID, MessageID: messageID, Content: content, Members: members, Images: images, ExistingRefAttachments: existingRefAttachments, ExistingInlineImageURLs: existingInlineImageURLs, Err: err}
 		}
-		err = UpdateChannelMessage(token, teamID, channelID, messageID, content, members)
-		return MsgEditDone{ChatID: channelID, MessageID: messageID, Content: content, Err: err}
+		err = UpdateChannelMessage(token, teamID, channelID, messageID, content, members, images, files, existingRefAttachments, existingInlineImageURLs)
+		return MsgEditDone{ChatID: channelID, MessageID: messageID, Content: content, Members: members, Images: images, ExistingRefAttachments: existingRefAttachments, ExistingInlineImageURLs: existingInlineImageURLs, Err: err}
 	}
 }
 

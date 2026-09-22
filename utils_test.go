@@ -713,7 +713,7 @@ func TestFormatMessageBodyWithImagesAndFilesInlineFiles(t *testing.T) {
 
 	body, _, _, payload := formatMessageBodyWithImagesAndFiles(
 		"start [File: a.docx] middle [File: b.docx] end",
-		nil, nil, attachments,
+		nil, nil, attachments, nil, false,
 	)
 
 	html := body["content"].(string)
@@ -765,10 +765,78 @@ func TestFormatMessageBodyWithImagesAndFilesUnreferencedAppended(t *testing.T) {
 		{ID: "id-orphan", Name: strPtr("unused.docx"), ContentURL: strPtr(url)},
 	}
 
-	body, _, _, _ := formatMessageBodyWithImagesAndFiles("hello", nil, nil, attachments)
+	body, _, _, _ := formatMessageBodyWithImagesAndFiles("hello", nil, nil, attachments, nil, false)
 	html := body["content"].(string)
 	if !strings.Contains(html, `<attachment id="id-orphan"></attachment>`) {
 		t.Fatalf("expected unreferenced file appended at end, got %q", html)
+	}
+}
+
+func TestFormatMessageBodyForUpdatePreservesFilesAndImages(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+	url := "https://tenant.sharepoint.com/file.docx"
+	attachments := []MessageAttachment{
+		{ID: "id-1", Name: strPtr("report.docx"), ContentURL: strPtr(url)},
+	}
+	existingImg := "https://graph.microsoft.com/v1.0/chats/123/messages/456/hostedContents/abc/$value"
+
+	body, _, hosted, payload := formatMessageBodyWithImagesAndFiles(
+		"sorki [File: report.docx] za spam [Image 1]",
+		nil, nil, attachments, []string{existingImg}, true,
+	)
+
+	html := body["content"].(string)
+	if strings.Contains(html, "[File:") {
+		t.Fatalf("file placeholder should be replaced, got %q", html)
+	}
+	if !strings.Contains(html, `<attachment id="id-1"></attachment>`) {
+		t.Fatalf("expected attachment tag in body, got %q", html)
+	}
+	if !strings.Contains(html, existingImg) {
+		t.Fatalf("expected existing inline image URL preserved, got %q", html)
+	}
+	if len(hosted) != 0 {
+		t.Fatalf("expected no new hosted contents, got %d", len(hosted))
+	}
+	if len(payload) != 1 {
+		t.Fatalf("expected 1 attachment payload, got %d", len(payload))
+	}
+}
+
+func TestFormatMessageBodyForUpdateDropsRemovedFiles(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+	url := "https://tenant.sharepoint.com/file.docx"
+	attachments := []MessageAttachment{
+		{ID: "id-1", Name: strPtr("report.docx"), ContentURL: strPtr(url)},
+	}
+
+	_, _, _, payload := formatMessageBodyWithImagesAndFiles(
+		"text only, file removed",
+		nil, nil, attachments, nil, true,
+	)
+	if len(payload) != 0 {
+		t.Fatalf("expected removed file to be omitted on update, got %d attachments", len(payload))
+	}
+}
+
+func TestReferenceAttachmentsFromMessage(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+	refType := "reference"
+	imgType := "image/png"
+	msg := Message{
+		Body: &MessageBody{Content: strPtr(`<p><img src="https://example.com/hostedContents/x/$value" /></p>`)},
+		Attachments: []MessageAttachment{
+			{ID: "file-1", Name: strPtr("a.docx"), ContentType: &refType, ContentURL: strPtr("https://tenant.sharepoint.com/a.docx")},
+			{ID: "inline-img-1", Name: strPtr("shot.png"), ContentType: &imgType, ContentURL: strPtr("https://example.com/hostedContents/x/$value")},
+		},
+	}
+	refs := referenceAttachmentsFromMessage(msg)
+	if len(refs) != 1 || refs[0].ID != "file-1" {
+		t.Fatalf("expected only reference attachment, got %+v", refs)
+	}
+	urls := inlineImageURLsFromMessage(msg)
+	if len(urls) != 1 || urls[0] != "https://example.com/hostedContents/x/$value" {
+		t.Fatalf("expected inline image URL from body, got %+v", urls)
 	}
 }
 
