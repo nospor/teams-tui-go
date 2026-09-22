@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/atotto/clipboard"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbletea"
@@ -370,7 +371,7 @@ func NewModel(app *App, clientID, userID string) Model {
 	fp.Styles.Selected = lipgloss.NewStyle().Foreground(colGreen).Bold(true)
 	fp.Styles.Permission = lipgloss.NewStyle().Foreground(colDimGray)
 
-	return Model{
+	m := Model{
 		app:                  app,
 		clientID:             clientID,
 		userID:               userID,
@@ -394,6 +395,34 @@ func NewModel(app *App, clientID, userID string) Model {
 		lastWrittenMessages:  -1,
 		lastWrittenReactions: -1,
 		viewCache:            &viewCache{dirty: true},
+	}
+	m.syncFilePickerKeys()
+	return m
+}
+
+// syncFilePickerKeys copies the resolved file-picker bindings onto the picker,
+// which matches keys through its own KeyMap.
+func (m *Model) syncFilePickerKeys() {
+	if m.app == nil {
+		return
+	}
+	if len(m.app.Keys.Normal.Next.Keys()) == 0 && len(m.app.Keys.FilePicker.Next.Keys()) == 0 {
+		m.app.Keys = DefaultKeyMap()
+	}
+	fp := m.app.Keys.FilePicker
+	m.filepicker.KeyMap = filepicker.KeyMap{
+		GoToTop:      fp.Top,
+		GoToLast:     fp.Bottom,
+		Down:         fp.Next,
+		Up:           fp.Prev,
+		PageUp:       fp.PageUp,
+		PageDown:     fp.PageDown,
+		Back:         fp.Back,
+		Open:         fp.Open,
+		Select:       fp.Select,
+		SortType:     fp.Sort,
+		SortOrder:    fp.SortOrder,
+		ToggleHidden: fp.Hidden,
 	}
 }
 
@@ -1709,11 +1738,12 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 	prevIdx := m.app.SelectedIndex
 
-	switch msg.String() {
-	case "q", "ctrl+c":
+	k := m.app.Keys.Normal
+	switch {
+	case msg.Type == tea.KeyCtrlC || pressed(msg, k.Quit):
 		return m, tea.Quit
 
-	case "j", "down":
+	case pressed(msg, k.Next):
 		if m.channelSelectedIndex >= 0 {
 			// Channel section: wrap around at the bottom.
 			chans := m.allChannels()
@@ -1731,7 +1761,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			}
 		}
 
-	case "k", "up":
+	case pressed(msg, k.Prev):
 		if m.channelSelectedIndex >= 0 {
 			// Channel section: wrap around at the top.
 			if m.channelSelectedIndex > 0 {
@@ -1749,7 +1779,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			}
 		}
 
-	case "tab":
+	case pressed(msg, k.Section):
 		// Switch between chat section and channel section.
 		if !m.app.Features.TeamsChannels || len(m.allChannels()) == 0 {
 			break
@@ -1776,7 +1806,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			}
 		}
 
-	case "n":
+	case pressed(msg, k.Notifications):
 		m.app.ToggleNotificationMode()
 		nm := m.app.NotificationMode
 		cfg := LoadConfig()
@@ -1786,11 +1816,11 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		cfg.NotificationMode = &nm
 		_ = SaveConfig(cfg)
 
-	case "?":
+	case pressed(msg, k.Help):
 		m.app.HelpPopupMode = true
 		m.app.HelpScrollOffset = 0
 
-	case "i":
+	case pressed(msg, k.Compose):
 		if m.app.SelectedIndex < 0 && m.channelSelectedIndex < 0 {
 			break
 		}
@@ -1799,7 +1829,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.textarea.Reset()
 		return m, m.textarea.Focus()
 
-	case "c":
+	case pressed(msg, k.ChatSearch):
 		m.app.UserSearchPopupMode = true
 		m.app.UserSearchMode = true
 		m.app.UserSearchQuery = ""
@@ -1812,7 +1842,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.userSearchInput.Focus()
 		return m, textinput.Blink
 
-	case "/":
+	case pressed(msg, k.Search):
 		if m.app.SelectedIndex < 0 && m.channelSelectedIndex < 0 {
 			break
 		}
@@ -1854,7 +1884,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, textinput.Blink
 
-	case "esc":
+	case pressed(msg, k.Sleep):
 		if m.app.SearchActive {
 			m.app.SearchActive = false
 			m.app.SearchQuery = ""
@@ -1870,7 +1900,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.app.SetStatus("💤 Entered sleep mode. No chat active.", 3*time.Second)
 		}
 
-	case "K", "pgup":
+	case pressed(msg, k.PageUp):
 		if m.app.SelectedIndex < 0 && m.channelSelectedIndex < 0 {
 			break
 		}
@@ -1884,7 +1914,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		m.app.SnapToBottom = false
 
-	case "J", "pgdown":
+	case pressed(msg, k.PageDown):
 		if m.app.SelectedIndex < 0 && m.channelSelectedIndex < 0 {
 			break
 		}
@@ -1894,7 +1924,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.app.SnapToBottom = true
 		}
 
-	case "m":
+	case pressed(msg, k.Messages):
 		if m.app.SelectedIndex < 0 && m.channelSelectedIndex < 0 {
 			break
 		}
@@ -1914,7 +1944,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			}
 		}
 
-	case "f":
+	case pressed(msg, k.Favourite):
 		// Toggle favourite on the selected chat — no-op in channel mode.
 		if m.channelSelectedIndex >= 0 {
 			break
@@ -1939,7 +1969,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			}
 		}
 
-	case "p":
+	case pressed(msg, k.Presence):
 		// Show presence popup for chats (requires presence_enabled feature).
 		if !m.app.Features.Presence {
 			m.app.SetStatus("Presence feature disabled — enable 'presence_enabled' in config.json", 5*time.Second)
@@ -1984,7 +2014,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, loadChatPresenceCmd(m.clientID, userIDs)
 		}
 
-	case "h":
+	case pressed(msg, k.ChannelHide):
 		// Toggle hide/unhide on the selected channel — no-op in chat mode.
 		if m.channelSelectedIndex < 0 {
 			break
@@ -2054,15 +2084,16 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if m.app.MentionPopupMode {
-		switch msg.String() {
-		case "esc":
+		k := m.app.Keys.Mention
+		switch {
+		case pressed(msg, k.Cancel):
 			m.app.MentionPopupMode = false
 			m.app.MentionSuggestions = nil
 			m.app.SkipTextareaUpdate = true
 			m.app.MentionCanceledStartIndex = m.app.MentionStartIndex
 			return m, nil
 
-		case "up", "shift+tab":
+		case pressed(msg, k.Prev):
 			if len(m.app.MentionSuggestions) > 0 {
 				m.app.MentionSelectedIndex--
 				if m.app.MentionSelectedIndex < 0 {
@@ -2080,7 +2111,7 @@ func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.app.SkipTextareaUpdate = true
 			return m, nil
 
-		case "down", "tab":
+		case pressed(msg, k.Next):
 			if len(m.app.MentionSuggestions) > 0 {
 				m.app.MentionSelectedIndex++
 				if m.app.MentionSelectedIndex >= len(m.app.MentionSuggestions) {
@@ -2098,7 +2129,7 @@ func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.app.SkipTextareaUpdate = true
 			return m, nil
 
-		case "enter":
+		case pressed(msg, k.Confirm):
 			if len(m.app.MentionSuggestions) > 0 && m.app.MentionSelectedIndex >= 0 && m.app.MentionSelectedIndex < len(m.app.MentionSuggestions) {
 				selected := m.app.MentionSuggestions[m.app.MentionSelectedIndex]
 				if selected.DisplayName != nil {
@@ -2125,8 +2156,9 @@ func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 	}
 
-	switch msg.String() {
-	case "esc":
+	k := m.app.Keys.Compose
+	switch {
+	case pressed(msg, k.Cancel):
 		m.app.InputMode = false
 		m.app.InputBuffer = ""
 		m.clearEditingState()
@@ -2135,21 +2167,21 @@ func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.textarea.Reset()
 		return m, nil
 
-	case "ctrl+g":
+	case pressed(msg, k.Editor):
 		editorCmd := m.app.ExternalEditor
 		if editorCmd == "" {
 			editorCmd = "vim"
 		}
 		return m, openExternalEditorCmd(m.textarea.Value(), editorCmd, false)
 
-	case "ctrl+f":
+	case pressed(msg, k.Attach):
 		if m.app.Features.FileUpload {
 			m.app.FilePickerPopupMode = true
 			return m, m.filepicker.Init()
 		}
 		return m, nil
 
-	case "ctrl+v", "ctrl+shift+v", "ctrl+V":
+	case pressed(msg, k.PasteImage):
 		imgBytes, contentType, err := GetClipboardImage()
 		if err == nil && len(imgBytes) > 0 {
 			m.app.ComposedImages = append(m.app.ComposedImages, PastedImage{
@@ -2164,7 +2196,7 @@ func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case "enter":
+	case pressed(msg, k.Send):
 		content := strings.Trim(m.textarea.Value(), "\n\r")
 		if content == "" {
 			return m, nil
@@ -2228,7 +2260,7 @@ func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, sendMessageCmd(m.clientID, chat.ID, content, members, images, files)
 
-	case "alt+enter", "shift+enter", "ctrl+enter":
+	case pressed(msg, k.Newline):
 		m.textarea.InsertString("\n")
 		return m, nil
 	}
@@ -2238,13 +2270,14 @@ func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) handleSearchModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
+	k := m.app.Keys.SearchInput
+	switch {
+	case pressed(msg, k.Cancel):
 		m.app.SearchMode = false
 		m.searchInput.Blur()
 		return m, nil
 
-	case "enter":
+	case pressed(msg, k.Submit):
 		query := strings.TrimSpace(m.searchInput.Value())
 		m.app.SearchMode = false
 		m.searchInput.Blur()
@@ -2294,8 +2327,9 @@ func (m Model) handleSearchModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) handleMessagePopupKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "q", "v":
+	k := m.app.Keys.MessageView
+	switch {
+	case pressed(msg, k.Close):
 		var cmd tea.Cmd
 		if m.app.AttachmentCursorMode {
 			m.app.AttachmentCursorMode = false
@@ -2308,7 +2342,7 @@ func (m Model) handleMessagePopupKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, cmd
 
-	case "ctrl+g":
+	case pressed(msg, k.Editor):
 		if m.app.MessageSelectedIndex < len(m.app.Messages) {
 			msgObj := m.app.Messages[m.app.MessageSelectedIndex]
 			editorCmd := m.app.ExternalEditor
@@ -2323,7 +2357,7 @@ func (m Model) handleMessagePopupKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "enter":
+	case pressed(msg, k.Confirm):
 		if m.app.AttachmentCursorMode {
 			return m.downloadSelectedAttachment(true)
 		}
@@ -2332,12 +2366,12 @@ func (m Model) handleMessagePopupKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.app.SetMessagePopupStatus("", 0)
 		return m, clearKittyImagesCmd()
 
-	case "d":
+	case pressed(msg, k.Download):
 		if m.app.AttachmentCursorMode {
 			return m.downloadSelectedAttachment(false)
 		}
 
-	case "tab":
+	case pressed(msg, k.Attachments):
 		var cmd tea.Cmd
 		if m.app.MessageSelectedIndex < len(m.app.Messages) {
 			msgObj := m.app.Messages[m.app.MessageSelectedIndex]
@@ -2353,7 +2387,7 @@ func (m Model) handleMessagePopupKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, cmd
 
-	case "j", "down":
+	case pressed(msg, k.Next):
 		if m.app.AttachmentCursorMode {
 			if m.app.MessageSelectedIndex < len(m.app.Messages) {
 				attCount := len(viewableAttachments(m.app.Messages[m.app.MessageSelectedIndex]))
@@ -2370,7 +2404,7 @@ func (m Model) handleMessagePopupKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, clearKittyImagesCmd()
 		}
 
-	case "k", "up":
+	case pressed(msg, k.Prev):
 		if m.app.AttachmentCursorMode {
 			if m.app.AttachmentSelectedIndex > 0 {
 				m.app.AttachmentSelectedIndex--
@@ -2392,10 +2426,10 @@ func (m Model) handleMessagePopupKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			)
 		}
 
-	case "J", "shift+down", "pgdown":
+	case pressed(msg, k.PageDown):
 		m.app.MessagePopupScrollOffset += 3
 
-	case "K", "shift+up", "pgup":
+	case pressed(msg, k.PageUp):
 		m.app.MessagePopupScrollOffset -= 3
 		if m.app.MessagePopupScrollOffset < 0 {
 			m.app.MessagePopupScrollOffset = 0
@@ -2405,17 +2439,18 @@ func (m Model) handleMessagePopupKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "m":
+	k := m.app.Keys.Message
+	switch {
+	case pressed(msg, k.Close):
 		m.app.MessageSelectionMode = false
 		return m, nil
 
-	case "j", "down":
+	case pressed(msg, k.Next):
 		if m.app.MessageSelectedIndex > 0 {
 			m.app.MessageSelectedIndex--
 		}
 
-	case "k", "up":
+	case pressed(msg, k.Prev):
 		if m.app.MessageSelectedIndex < len(m.app.Messages)-1 {
 			m.app.MessageSelectedIndex++
 		} else if m.app.NextLink != "" && !m.app.LoadingMessages {
@@ -2424,11 +2459,11 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, loadMoreMessagesCmd(m.clientID, m.app.NextLink, m.activeConversationID(), false)
 		}
 
-	case "r":
+	case pressed(msg, k.React):
 		m.app.ReactionMode = true
 		return m, nil
 
-	case "y":
+	case pressed(msg, k.Yank):
 		if m.app.MessageSelectedIndex < len(m.app.Messages) {
 			msgObj := m.app.Messages[m.app.MessageSelectedIndex]
 			if msgObj.Body != nil && msgObj.Body.Content != nil {
@@ -2443,7 +2478,7 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "d":
+	case pressed(msg, k.Delete):
 		if m.app.MessageSelectedIndex < len(m.app.Messages) {
 			msgObj := m.app.Messages[m.app.MessageSelectedIndex]
 			if m.isOwn(msgObj) {
@@ -2454,7 +2489,7 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "ctrl+g":
+	case pressed(msg, k.Editor):
 		if m.app.MessageSelectedIndex < len(m.app.Messages) {
 			msgObj := m.app.Messages[m.app.MessageSelectedIndex]
 			editorCmd := m.app.ExternalEditor
@@ -2469,7 +2504,7 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "e":
+	case pressed(msg, k.Edit):
 		if m.app.MessageSelectedIndex < len(m.app.Messages) {
 			msgObj := m.app.Messages[m.app.MessageSelectedIndex]
 			if m.isOwn(msgObj) {
@@ -2482,7 +2517,7 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "a":
+	case pressed(msg, k.Reply):
 		if m.app.MessageSelectedIndex < len(m.app.Messages) {
 			msgObj := m.app.Messages[m.app.MessageSelectedIndex]
 			m.app.MessageSelectionMode = false
@@ -2504,7 +2539,7 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, m.textarea.Focus()
 		}
 		return m, nil
-	case "u":
+	case pressed(msg, k.YankURL):
 		if m.app.MessageSelectedIndex < len(m.app.Messages) {
 			msgObj := m.app.Messages[m.app.MessageSelectedIndex]
 			if msgObj.Body != nil && msgObj.Body.Content != nil {
@@ -2525,7 +2560,7 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			}
 		}
 		return m, nil
-	case "o":
+	case pressed(msg, k.OpenURL):
 		if m.app.MessageSelectedIndex < len(m.app.Messages) {
 			msgObj := m.app.Messages[m.app.MessageSelectedIndex]
 			if msgObj.Body != nil && msgObj.Body.Content != nil {
@@ -2544,7 +2579,7 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			}
 		}
 		return m, nil
-	case "v":
+	case pressed(msg, k.View):
 		if len(m.app.Messages) > 0 && m.app.MessageSelectedIndex < len(m.app.Messages) {
 			m.app.Messages[m.app.MessageSelectedIndex].ProcessInlineImages()
 			m.app.MessagePopupMode = true
@@ -2564,7 +2599,7 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "p":
+	case pressed(msg, k.Presence):
 		// Show presence popup (requires presence_enabled feature).
 		if !m.app.Features.Presence {
 			m.app.SetStatus("Presence feature disabled — enable 'presence_enabled' in config.json", 5*time.Second)
@@ -2587,7 +2622,7 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "i":
+	case pressed(msg, k.Profile):
 		// Show user profile popup (requires user_profile_enabled feature).
 		if !m.app.Features.UserProfile {
 			m.app.SetStatus("User profile feature disabled — enable 'user_profile_enabled' in config.json", 5*time.Second)
@@ -2610,58 +2645,71 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) handleReactionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "r":
+	k := m.app.Keys.Reaction
+	switch {
+	case pressed(msg, k.Close):
 		m.app.ReactionMode = false
 		return m, nil
 
-	case "1", "2", "3", "4", "5", "6":
-		types := []string{"👍", "❤️", "😂", "😮", "😢", "😡"}
-		idx := int(msg.String()[0] - '1')
-		if idx >= 0 && idx < len(types) {
-			reactionType := types[idx]
-			if m.app.MessageSelectedIndex < len(m.app.Messages) {
-				msgObj := m.app.Messages[m.app.MessageSelectedIndex]
+	default:
+		var reactionType string
+		switch {
+		case pressed(msg, k.Like):
+			reactionType = "👍"
+		case pressed(msg, k.Heart):
+			reactionType = "❤️"
+		case pressed(msg, k.Laugh):
+			reactionType = "😂"
+		case pressed(msg, k.Surprised):
+			reactionType = "😮"
+		case pressed(msg, k.Sad):
+			reactionType = "😢"
+		case pressed(msg, k.Angry):
+			reactionType = "😡"
+		default:
+			return m, nil
+		}
+		if m.app.MessageSelectedIndex < len(m.app.Messages) {
+			msgObj := m.app.Messages[m.app.MessageSelectedIndex]
 
-				// Check if current user already has this reaction.
-				hasReaction := false
-				if m.app.CurrentUserName != nil {
-					for _, r := range msgObj.Reactions {
-						rType := strings.ToLower(r.ReactionType)
-						targetType := strings.ToLower(reactionType)
-						// Match either keyword or emoji directly.
-						match := rType == targetType ||
-							(rType == "like" && targetType == "👍") ||
-							(rType == "heart" && targetType == "❤️") ||
-							(rType == "laugh" && targetType == "😂") ||
-							(rType == "surprised" && targetType == "😮") ||
-							(rType == "sad" && targetType == "😢") ||
-							(rType == "angry" && targetType == "😡")
+			// Check if current user already has this reaction.
+			hasReaction := false
+			if m.app.CurrentUserName != nil {
+				for _, r := range msgObj.Reactions {
+					rType := strings.ToLower(r.ReactionType)
+					targetType := strings.ToLower(reactionType)
+					// Match either keyword or emoji directly.
+					match := rType == targetType ||
+						(rType == "like" && targetType == "👍") ||
+						(rType == "heart" && targetType == "❤️") ||
+						(rType == "laugh" && targetType == "😂") ||
+						(rType == "surprised" && targetType == "😮") ||
+						(rType == "sad" && targetType == "😢") ||
+						(rType == "angry" && targetType == "😡")
 
-						if match && r.User != nil && r.User.User != nil &&
-							r.User.User.ID != nil &&
-							*r.User.User.ID == m.app.CurrentUserID {
-							hasReaction = true
-							break
-						}
+					if match && r.User != nil && r.User.User != nil &&
+						r.User.User.ID != nil &&
+						*r.User.User.ID == m.app.CurrentUserID {
+						hasReaction = true
+						break
 					}
 				}
+			}
 
-				m.app.ReactionMode = false
-				m.app.MessageSelectionMode = false
-				if ch := m.activeChannelEntry(); ch != nil {
-					if hasReaction {
-						return m, unsetChannelReactionCmd(m.clientID, ch.teamID, ch.channelID, msgObj.ID, reactionType)
-					}
-					return m, setChannelReactionCmd(m.clientID, ch.teamID, ch.channelID, msgObj.ID, reactionType)
+			m.app.ReactionMode = false
+			m.app.MessageSelectionMode = false
+			if ch := m.activeChannelEntry(); ch != nil {
+				if hasReaction {
+					return m, unsetChannelReactionCmd(m.clientID, ch.teamID, ch.channelID, msgObj.ID, reactionType)
 				}
-				chat := m.app.GetSelectedChat()
-				if chat != nil {
-					if hasReaction {
-						return m, unsetReactionCmd(m.clientID, chat.ID, msgObj.ID, reactionType)
-					}
-					return m, setReactionCmd(m.clientID, chat.ID, msgObj.ID, reactionType)
+				return m, setChannelReactionCmd(m.clientID, ch.teamID, ch.channelID, msgObj.ID, reactionType)
+			}
+			chat := m.app.GetSelectedChat()
+			if chat != nil {
+				if hasReaction {
+					return m, unsetReactionCmd(m.clientID, chat.ID, msgObj.ID, reactionType)
 				}
+				return m, setReactionCmd(m.clientID, chat.ID, msgObj.ID, reactionType)
 			}
 		}
 	}
@@ -2669,8 +2717,9 @@ func (m Model) handleReactionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) handleDeleteConfirmModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "y", "Y":
+	k := m.app.Keys.DeleteConfirm
+	switch {
+	case pressed(msg, k.Yes):
 		m.app.DeleteConfirmMode = false
 		m.app.MessageSelectionMode = false
 		if m.app.MessageSelectedIndex < len(m.app.Messages) {
@@ -2682,29 +2731,30 @@ func (m Model) handleDeleteConfirmModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				return m, deleteMessageCmd(m.clientID, chat.ID, msgObj.ID)
 			}
 		}
-	case "n", "N", "esc":
+	case pressed(msg, k.No):
 		m.app.DeleteConfirmMode = false
 	}
 	return m, nil
 }
 
 func (m Model) updateUrlSelection(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "q":
+	k := m.app.Keys.URLList
+	switch {
+	case pressed(msg, k.Close):
 		m.app.UrlSelectionMode = false
 		return m, nil
 
-	case "j", "down":
+	case pressed(msg, k.Next):
 		if m.app.UrlSelectedIndex < len(m.app.UrlsInMessage)-1 {
 			m.app.UrlSelectedIndex++
 		}
 
-	case "k", "up":
+	case pressed(msg, k.Prev):
 		if m.app.UrlSelectedIndex > 0 {
 			m.app.UrlSelectedIndex--
 		}
 
-	case "enter":
+	case pressed(msg, k.Confirm):
 		url := m.app.UrlsInMessage[m.app.UrlSelectedIndex]
 		m.app.UrlSelectionMode = false
 		m.app.MessageSelectionMode = false
@@ -2717,7 +2767,7 @@ func (m Model) updateUrlSelection(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case "y":
+	case pressed(msg, k.Yank):
 		if !m.app.UrlSelectionOpenMode {
 			url := m.app.UrlsInMessage[m.app.UrlSelectedIndex]
 			m.app.UrlSelectionMode = false
@@ -2727,7 +2777,7 @@ func (m Model) updateUrlSelection(msg tea.KeyMsg) (Model, tea.Cmd) {
 			}
 		}
 
-	case "o":
+	case pressed(msg, k.OpenURL):
 		if m.app.UrlSelectionOpenMode {
 			url := m.app.UrlsInMessage[m.app.UrlSelectedIndex]
 			m.app.UrlSelectionMode = false
@@ -2739,22 +2789,23 @@ func (m Model) updateUrlSelection(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) handleUrlSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "q":
+	k := m.app.Keys.URLList
+	switch {
+	case pressed(msg, k.Close):
 		m.app.UrlSelectionMode = false
 		return m, nil
 
-	case "j", "down":
+	case pressed(msg, k.Next):
 		if m.app.UrlSelectedIndex < len(m.app.UrlsInMessage)-1 {
 			m.app.UrlSelectedIndex++
 		}
 
-	case "k", "up":
+	case pressed(msg, k.Prev):
 		if m.app.UrlSelectedIndex > 0 {
 			m.app.UrlSelectedIndex--
 		}
 
-	case "enter":
+	case pressed(msg, k.Confirm):
 		url := m.app.UrlsInMessage[m.app.UrlSelectedIndex]
 		m.app.UrlSelectionMode = false
 		m.app.MessageSelectionMode = false
@@ -2767,7 +2818,7 @@ func (m Model) handleUrlSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case "y":
+	case pressed(msg, k.Yank):
 		if !m.app.UrlSelectionOpenMode {
 			url := m.app.UrlsInMessage[m.app.UrlSelectedIndex]
 			m.app.UrlSelectionMode = false
@@ -2777,7 +2828,7 @@ func (m Model) handleUrlSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			}
 		}
 
-	case "o":
+	case pressed(msg, k.OpenURL):
 		if m.app.UrlSelectionOpenMode {
 			url := m.app.UrlsInMessage[m.app.UrlSelectedIndex]
 			m.app.UrlSelectionMode = false
@@ -3077,7 +3128,7 @@ func (m Model) renderView() string {
 // renderRightPanel renders the messages panel (with optional input area).
 func (m Model) renderRightPanel(w, h int) string {
 	if m.app.SelectedIndex < 0 && m.channelSelectedIndex < 0 {
-		idleMsg := "💤 Sleep Mode\n\nNo chat selected. Polling is paused.\n\nPress 'j' or 'k' to select a chat\nand resume polling."
+		idleMsg := fmt.Sprintf("💤 Sleep Mode\n\nNo chat selected. Polling is paused.\n\nPress %s to select a chat\nand resume polling.", slashKeys(m.app.Keys.Normal.Prev, m.app.Keys.Normal.Next))
 		msgContent := lipgloss.Place(w, h-2, lipgloss.Center, lipgloss.Center,
 			lipgloss.NewStyle().Foreground(colDimGray).Align(lipgloss.Center).Render(idleMsg),
 		)
@@ -3090,17 +3141,44 @@ func (m Model) renderRightPanel(w, h int) string {
 	}
 
 	if !m.app.InputMode {
-		title := "Messages (i:compose, m:select, K/J:scroll, /:search, ?:help, ESC:sleep mode)"
+		nk := m.app.Keys.Normal
+		title := fmt.Sprintf("Messages (%s:compose, %s:select, %s:scroll, %s:search, %s:help, %s:sleep mode)",
+			FormatKeys(nk.Compose, "/"),
+			FormatKeys(nk.Messages, "/"),
+			slashKeys(nk.PageUp, nk.PageDown),
+			FormatKeys(nk.Search, "/"),
+			FormatKeys(nk.Help, "/"),
+			FormatKeys(nk.Sleep, "/"),
+		)
 		if m.channelSelectedIndex >= 0 {
 			chans := m.allChannels()
 			if m.channelSelectedIndex < len(chans) {
 				entry := chans[m.channelSelectedIndex]
 				title = lipgloss.NewStyle().Foreground(lipgloss.Color("#5F87FF")).Bold(true).Render("#") +
 					" " + entry.teamName + " » " + entry.channelName +
-					lipgloss.NewStyle().Foreground(colDimGray).Render("  (K/J:scroll, m:select, ?:help)")
+					lipgloss.NewStyle().Foreground(colDimGray).Render(fmt.Sprintf("  (%s:scroll, %s:select, %s:help)",
+						slashKeys(nk.PageUp, nk.PageDown),
+						FormatKeys(nk.Messages, "/"),
+						FormatKeys(nk.Help, "/"),
+					))
 			}
 		} else if m.app.MessageSelectionMode {
-			title = "MESSAGE MODE (j/k:nav, r:react, y:yank, u:url, o:open, d:delete, e:edit, a:answer, v:view, ctrl+g: editor, p:presence, i:profile, ESC/m:exit)"
+			mk := m.app.Keys.Message
+			title = fmt.Sprintf("MESSAGE MODE (%s:nav, %s:react, %s:yank, %s:url, %s:open, %s:delete, %s:edit, %s:answer, %s:view, %s:editor, %s:presence, %s:profile, %s:exit)",
+				slashKeys(mk.Next, mk.Prev),
+				FormatKeys(mk.React, "/"),
+				FormatKeys(mk.Yank, "/"),
+				FormatKeys(mk.YankURL, "/"),
+				FormatKeys(mk.OpenURL, "/"),
+				FormatKeys(mk.Delete, "/"),
+				FormatKeys(mk.Edit, "/"),
+				FormatKeys(mk.Reply, "/"),
+				FormatKeys(mk.View, "/"),
+				FormatKeys(mk.Editor, "/"),
+				FormatKeys(mk.Presence, "/"),
+				FormatKeys(mk.Profile, "/"),
+				FormatKeys(mk.Close, "/"),
+			)
 		}
 		msgContent := m.renderMessages(w, h-1)
 		return normalBorder.Width(w).Height(h).
@@ -3175,11 +3253,12 @@ func (m Model) renderRightPanel(w, h int) string {
 	}
 
 	msgContent := m.renderMessages(w, msgH-1)
-	title := "Messages (ESC to cancel)"
+	cancelKey := FormatKeys(m.app.Keys.Compose.Cancel, "/")
+	title := "Messages (" + cancelKey + " to cancel)"
 	if m.app.EditingMessageID != nil {
-		title = "EDITING MESSAGE (ESC to cancel)"
+		title = "EDITING MESSAGE (" + cancelKey + " to cancel)"
 	} else if m.app.ChannelReplyToID != "" {
-		title = "REPLYING TO THREAD (ESC to cancel)"
+		title = "REPLYING TO THREAD (" + cancelKey + " to cancel)"
 	} else if m.app.ReplyToMessage != nil {
 		ref := m.app.ReplyToMessage
 		sender := "someone"
@@ -3189,7 +3268,7 @@ func (m Model) renderRightPanel(w, h int) string {
 				sender = "yourself"
 			}
 		}
-		title = "REPLYING TO " + sender + " (ESC to cancel)"
+		title = "REPLYING TO " + sender + " (" + cancelKey + " to cancel)"
 	}
 	msgBox := normalBorder.Width(w).Height(msgH).
 		Render(lipgloss.JoinVertical(lipgloss.Left,
@@ -3201,11 +3280,27 @@ func (m Model) renderRightPanel(w, h int) string {
 	m.textarea.SetHeight(inputH - 2)
 
 	// Build input box contents — add quote preview when replying.
-	hintText := "Type your message (Enter: send, Alt+Enter: new line, ESC: cancel, @: mention, paste IMAGE"
-	if m.app.Features.FileUpload {
-		hintText += ", Ctrl+f: attach file"
+	ck := m.app.Keys.Compose
+	var hintText string
+	if m.app.MentionPopupMode {
+		men := m.app.Keys.Mention
+		hintText = fmt.Sprintf("Mention (%s: prev, %s: next, %s: select, %s: cancel)",
+			FormatKeys(men.Prev, "/"),
+			FormatKeys(men.Next, "/"),
+			FormatKeys(men.Confirm, "/"),
+			FormatKeys(men.Cancel, "/"),
+		)
+	} else {
+		hintText = fmt.Sprintf("Type your message (%s: send, %s: new line, %s: cancel, @: mention, paste IMAGE",
+			FormatKeys(ck.Send, "/"),
+			FormatKeys(ck.Newline, "/"),
+			FormatKeys(ck.Cancel, "/"),
+		)
+		if m.app.Features.FileUpload {
+			hintText += fmt.Sprintf(", %s: attach file", FormatKeys(ck.Attach, "/"))
+		}
+		hintText += fmt.Sprintf(", %s: open external editor)", FormatKeys(ck.Editor, "/"))
 	}
-	hintText += ", Ctrl+g: open external editor)"
 
 	hintLine := lipgloss.NewStyle().Foreground(colDimGray).Render(hintText)
 	inputParts := []string{hintLine}
@@ -3402,9 +3497,21 @@ func (m Model) activeConversationID() string {
 }
 
 func (m Model) renderChatList(w, h int) string {
-	titleText := "Chats (j/k: nav, c: find, f: ★ fav, q: quit)"
+	nk := m.app.Keys.Normal
+	titleText := fmt.Sprintf("Chats (%s: nav, %s: find, %s: ★ fav, %s: quit)",
+		slashKeys(nk.Next, nk.Prev),
+		FormatKeys(nk.ChatSearch, "/"),
+		FormatKeys(nk.Favourite, "/"),
+		FormatKeys(nk.Quit, "/"),
+	)
 	if m.app.Features.TeamsChannels {
-		titleText = "Chats (j/k: nav, Tab: switch, c: find, f: ★ fav, q: quit)"
+		titleText = fmt.Sprintf("Chats (%s: nav, %s: switch, %s: find, %s: ★ fav, %s: quit)",
+			slashKeys(nk.Next, nk.Prev),
+			FormatKeys(nk.Section, "/"),
+			FormatKeys(nk.ChatSearch, "/"),
+			FormatKeys(nk.Favourite, "/"),
+			FormatKeys(nk.Quit, "/"),
+		)
 	}
 	title := lipgloss.NewStyle().Foreground(colDimGray).Render(titleText)
 
@@ -3888,18 +3995,29 @@ func (m Model) renderStatusBar(w int) string {
 	if m.app.DeleteConfirmMode {
 		return bellBorder.Width(w - 2).Height(1).Render(
 			lipgloss.NewStyle().Foreground(colRed).Bold(true).Render(
-				"DELETE MESSAGE? (y:yes / n:no)",
+				fmt.Sprintf("DELETE MESSAGE? (%s:yes / %s:no)",
+					FormatKeys(m.app.Keys.DeleteConfirm.Yes, "/"),
+					FormatKeys(m.app.Keys.DeleteConfirm.No, "/"),
+				),
 			),
 		)
 	}
 	if m.app.ReactionMode {
 		return normalBorder.Width(w - 2).Height(1).Render(
 			lipgloss.NewStyle().Foreground(colYellow).Render(
-				"REACT: 1:👍 2:❤️ 3:😂 4:😮 5:😢 6:😡 (ESC:cancel)",
+				fmt.Sprintf("REACT: %s:👍 %s:❤️ %s:😂 %s:😮 %s:😢 %s:😡 (%s:cancel)",
+					FormatKeys(m.app.Keys.Reaction.Like, "/"),
+					FormatKeys(m.app.Keys.Reaction.Heart, "/"),
+					FormatKeys(m.app.Keys.Reaction.Laugh, "/"),
+					FormatKeys(m.app.Keys.Reaction.Surprised, "/"),
+					FormatKeys(m.app.Keys.Reaction.Sad, "/"),
+					FormatKeys(m.app.Keys.Reaction.Angry, "/"),
+					FormatKeys(m.app.Keys.Reaction.Close, "/"),
+				),
 			),
 		)
 	}
-	text := fmt.Sprintf("%s | Notification (n): %s", m.app.Status, m.app.NotificationMode)
+	text := fmt.Sprintf("%s | Notification (%s): %s", m.app.Status, FormatKeys(m.app.Keys.Normal.Notifications, "/"), m.app.NotificationMode)
 	if m.app.LoadingMessages && len(m.app.Messages) > 0 {
 		text = "⏳ Loading older messages... | " + text
 	}
@@ -4781,15 +4899,25 @@ func (m Model) renderSearchPopup(w, h int) string {
 	}
 
 	titleStyle := lipgloss.NewStyle().Foreground(colYellow).Bold(true)
-	titleText := "Search History (Enter to search)"
+	sk := m.app.Keys.SearchResults
+	si := m.app.Keys.SearchInput
+	titleText := fmt.Sprintf("Search History (%s to search)", FormatKeys(si.Submit, "/"))
 	if m.app.SearchQuery != "" {
 		titleText = fmt.Sprintf("Search History: %s | Results for '%s'", displayName, m.app.SearchQuery)
 	}
 	title := titleStyle.Render(titleText)
 
-	instructions := lipgloss.NewStyle().Foreground(colDimGray).Render(
-		" j/k: Nav | g: Go to msg | y: Yank | u: URL | o: Open URL | Enter: Expand | /: Edit | Esc: Close",
-	)
+	instructions := lipgloss.NewStyle().Foreground(colDimGray).Render(fmt.Sprintf(
+		" %s: Nav | %s: Go to msg | %s: Yank | %s: URL | %s: Open URL | %s: Expand | %s: Edit | %s: Close",
+		slashKeys(sk.Next, sk.Prev),
+		FormatKeys(sk.Goto, "/"),
+		FormatKeys(sk.Yank, "/"),
+		FormatKeys(sk.YankURL, "/"),
+		FormatKeys(sk.OpenURL, "/"),
+		FormatKeys(sk.Expand, "/"),
+		FormatKeys(sk.EditQuery, "/"),
+		FormatKeys(sk.Close, "/"),
+	))
 
 	var list strings.Builder
 	list.WriteString(title + "\n")
@@ -4803,7 +4931,7 @@ func (m Model) renderSearchPopup(w, h int) string {
 
 	if len(results) == 0 {
 		if m.app.SearchQuery == "" {
-			list.WriteString(lipgloss.NewStyle().Foreground(colDimGray).Render("Type a query and press Enter to search.") + "\n")
+			list.WriteString(lipgloss.NewStyle().Foreground(colDimGray).Render(fmt.Sprintf("Type a query and press %s to search.", FormatKeys(m.app.Keys.SearchInput.Submit, "/"))) + "\n")
 		} else {
 			list.WriteString(lipgloss.NewStyle().Foreground(colDimGray).Render("No matching messages found.") + "\n")
 		}
@@ -5026,8 +5154,9 @@ func (m Model) renderSearchPopup(w, h int) string {
 
 // handleSearchPopupNavigationKey handles keystrokes inside results list navigation mode.
 func (m Model) handleSearchPopupNavigationKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "q":
+	k := m.app.Keys.SearchResults
+	switch {
+	case pressed(msg, k.Close):
 		m.app.SearchPopupMode = false
 		m.app.SearchMode = false
 		m.app.SetSearchLoadingMessages(false)
@@ -5036,14 +5165,14 @@ func (m Model) handleSearchPopupNavigationKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.app.SnapToBottom = m.app.MainChatSnapToBottom
 		return m, nil
 
-	case "j", "down":
+	case pressed(msg, k.Next):
 		if m.app.SearchPopupSelectedIndex < len(m.app.SearchPopupResults)-1 {
 			m.app.SearchPopupSelectedIndex++
 		}
 		m.saveSearchState()
 		return m, nil
 
-	case "k", "up":
+	case pressed(msg, k.Prev):
 		if m.app.SearchPopupSelectedIndex > 0 {
 			m.app.SearchPopupSelectedIndex--
 		} else {
@@ -5062,13 +5191,13 @@ func (m Model) handleSearchPopupNavigationKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.saveSearchState()
 		return m, nil
 
-	case "/":
+	case pressed(msg, k.EditQuery):
 		m.app.SearchMode = true
 		m.searchInput.Focus()
 		m.saveSearchState()
 		return m, textinput.Blink
 
-	case "g":
+	case pressed(msg, k.Goto):
 		if len(m.app.SearchPopupResults) > 0 && m.app.SearchPopupSelectedIndex < len(m.app.SearchPopupResults) {
 			item := m.app.SearchPopupResults[m.app.SearchPopupSelectedIndex]
 			convID := m.activeConversationID()
@@ -5110,7 +5239,7 @@ func (m Model) handleSearchPopupNavigationKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "y":
+	case pressed(msg, k.Yank):
 		if len(m.app.SearchPopupResults) > 0 && m.app.SearchPopupSelectedIndex < len(m.app.SearchPopupResults) {
 			msgObj := m.app.SearchPopupResults[m.app.SearchPopupSelectedIndex].Message
 			if msgObj.Body != nil && msgObj.Body.Content != nil {
@@ -5122,7 +5251,7 @@ func (m Model) handleSearchPopupNavigationKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				}
 			}
 		}
-	case "enter":
+	case pressed(msg, k.Expand):
 		if len(m.app.SearchPopupResults) > 0 && m.app.SearchPopupSelectedIndex < len(m.app.SearchPopupResults) {
 			item := m.app.SearchPopupResults[m.app.SearchPopupSelectedIndex]
 			convID := m.activeConversationID()
@@ -5156,7 +5285,7 @@ func (m Model) handleSearchPopupNavigationKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "u":
+	case pressed(msg, k.YankURL):
 		if len(m.app.SearchPopupResults) > 0 && m.app.SearchPopupSelectedIndex < len(m.app.SearchPopupResults) {
 			msgObj := m.app.SearchPopupResults[m.app.SearchPopupSelectedIndex].Message
 			if msgObj.Body != nil && msgObj.Body.Content != nil {
@@ -5175,7 +5304,7 @@ func (m Model) handleSearchPopupNavigationKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				}
 			}
 		}
-	case "o":
+	case pressed(msg, k.OpenURL):
 		if len(m.app.SearchPopupResults) > 0 && m.app.SearchPopupSelectedIndex < len(m.app.SearchPopupResults) {
 			msgObj := m.app.SearchPopupResults[m.app.SearchPopupSelectedIndex].Message
 			if msgObj.Body != nil && msgObj.Body.Content != nil {
@@ -5580,19 +5709,20 @@ func (m *Model) updateUserSearchLocalResults() {
 }
 
 func (m Model) handleUserSearchInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
+	k := m.app.Keys.ChatSearchInput
+	switch {
+	case pressed(msg, k.Cancel):
 		m.app.UserSearchMode = false
 		m.userSearchInput.Blur()
 		return m, nil
 
-	case "down", "up", "tab":
+	case pressed(msg, k.FocusResults):
 		m.app.UserSearchMode = false
 		m.userSearchInput.Blur()
 		m.app.UserSearchSelectedIndex = 0
 		return m, nil
 
-	case "enter":
+	case pressed(msg, k.Submit):
 		query := strings.TrimSpace(m.userSearchInput.Value())
 		m.app.UserSearchMode = false
 		m.userSearchInput.Blur()
@@ -5611,31 +5741,32 @@ func (m Model) handleUserSearchInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 func (m Model) handleUserSearchNavigationKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	items := m.getUserSearchItems()
+	k := m.app.Keys.ChatSearchResults
 
-	switch msg.String() {
-	case "esc", "q":
+	switch {
+	case pressed(msg, k.Close):
 		m.app.UserSearchPopupMode = false
 		m.app.UserSearchMode = false
 		return m, nil
 
-	case "j", "down":
+	case pressed(msg, k.Next):
 		if len(items) > 0 && m.app.UserSearchSelectedIndex < len(items)-1 {
 			m.app.UserSearchSelectedIndex++
 		}
 		return m, nil
 
-	case "k", "up":
+	case pressed(msg, k.Prev):
 		if len(items) > 0 && m.app.UserSearchSelectedIndex > 0 {
 			m.app.UserSearchSelectedIndex--
 		}
 		return m, nil
 
-	case "/":
+	case pressed(msg, k.EditQuery):
 		m.app.UserSearchMode = true
 		m.userSearchInput.Focus()
 		return m, textinput.Blink
 
-	case "enter":
+	case pressed(msg, k.Open):
 		if len(items) == 0 || m.app.UserSearchSelectedIndex >= len(items) {
 			return m, nil
 		}
@@ -5687,9 +5818,19 @@ func (m Model) renderUserSearchPopup(w, h int) string {
 	titleStyle := lipgloss.NewStyle().Foreground(colCyan).Bold(true)
 	title := titleStyle.Render("Find Local Chat or Start Direct Chat")
 
-	instructions := lipgloss.NewStyle().Foreground(colDimGray).Render(
-		" j/k: Nav | Enter: Open selected chat or typed email | /: Edit | Esc: Close",
-	)
+	ck := m.app.Keys.ChatSearchResults
+	ci := m.app.Keys.ChatSearchInput
+	openHint := FormatKeys(ck.Open, "/")
+	if submit := FormatKeys(ci.Submit, "/"); submit != openHint {
+		openHint += "/" + submit
+	}
+	instructions := lipgloss.NewStyle().Foreground(colDimGray).Render(fmt.Sprintf(
+		" %s: Nav | %s: Open selected chat or typed email | %s: Edit | %s: Close",
+		slashKeys(ck.Next, ck.Prev),
+		openHint,
+		FormatKeys(ck.EditQuery, "/"),
+		FormatKeys(ck.Close, "/"),
+	))
 
 	var list strings.Builder
 	list.WriteString(title + "\n")
@@ -5703,7 +5844,7 @@ func (m Model) renderUserSearchPopup(w, h int) string {
 
 	if len(items) == 0 {
 		if m.app.UserSearchQuery == "" {
-			list.WriteString(lipgloss.NewStyle().Foreground(colDimGray).Render("Type a name/email and press Enter/arrows.") + "\n")
+			list.WriteString(lipgloss.NewStyle().Foreground(colDimGray).Render(fmt.Sprintf("Type a name/email and press %s or %s.", FormatKeys(m.app.Keys.ChatSearchInput.Submit, "/"), FormatKeys(m.app.Keys.ChatSearchInput.FocusResults, "/"))) + "\n")
 		} else {
 			list.WriteString(lipgloss.NewStyle().Foreground(colDimGray).Render("No matching local chats or channels found.") + "\n")
 		}
@@ -5970,7 +6111,20 @@ func (m Model) renderMessagePopup(w, h int) string {
 		}
 	}
 
-	footer := lipgloss.NewStyle().Foreground(colDimGray).Italic(true).Render("Press ESC/q/v/Enter to close | j/k to navigate | J/K to scroll | ctrl+g to open in external editor")
+	mv := m.app.Keys.MessageView
+	closeHint := FormatKeys(mv.Close, "/")
+	if confirm := FormatKeys(mv.Confirm, "/"); !strings.Contains(closeHint, confirm) {
+		closeHint += "/" + confirm
+	}
+	footer := lipgloss.NewStyle().Foreground(colDimGray).Italic(true).Render(fmt.Sprintf(
+		"Press %s to close | %s to navigate | %s to scroll | %s to open in external editor | %s: attachments | %s: download",
+		closeHint,
+		slashKeys(mv.Next, mv.Prev),
+		slashKeys(mv.PageUp, mv.PageDown),
+		FormatKeys(mv.Editor, "/"),
+		FormatKeys(mv.Attachments, "/"),
+		FormatKeys(mv.Download, "/"),
+	))
 
 	nonBodyH := len(headerLines) + 1
 	if len(attachmentsLines) > 0 {
@@ -6180,72 +6334,118 @@ func (m Model) getHelpContentLines() []string {
 	keyStyle := lipgloss.NewStyle().Foreground(colCyan)
 	dimStyle := lipgloss.NewStyle().Foreground(colDimGray)
 
+	n := m.app.Keys.Normal
+	msg := m.app.Keys.Message
+	view := m.app.Keys.MessageView
+	search := m.app.Keys.SearchResults
+	searchIn := m.app.Keys.SearchInput
+	chat := m.app.Keys.ChatSearchResults
+	chatIn := m.app.Keys.ChatSearchInput
+	compose := m.app.Keys.Compose
+	mention := m.app.Keys.Mention
+	react := m.app.Keys.Reaction
+	del := m.app.Keys.DeleteConfirm
+	fp := m.app.Keys.FilePicker
+	hk := func(b key.Binding) string { return FormatKeys(b, " / ") }
+
 	sections := []struct {
 		name  string
 		binds [][2]string
 	}{
 		{"Navigation", [][2]string{
-			{"j / ↓", "Navigate list down (within section)"},
-			{"k / ↑", "Navigate list up (within section)"},
-			{"Tab", "Switch between Chats & Channels"},
-			{"m", "Enter message selection mode"},
-			{"i", "Compose new message"},
-			{"c", "Open chat search / open chat"},
-			{"/", "Search message history"},
-			{"f", "Toggle favourite (chats only)"},
-			{"h", "Toggle hide/unhide channel (channels only)"},
-			{"p", "Presence status of chat participants (chats only, feature: presence_enabled)"},
-			{"n", "Cycle notification mode"},
-			{"ESC", "Enter sleep / idle mode (stop polling)"},
-			{"?", "Show this help"},
-			{"q / Ctrl+C", "Quit"},
+			{hk(n.Next), "Navigate list down (within section)"},
+			{hk(n.Prev), "Navigate list up (within section)"},
+			{hk(n.Section), "Switch between Chats & Channels"},
+			{hk(n.Messages), "Enter message selection mode"},
+			{hk(n.Compose), "Compose new message"},
+			{hk(n.ChatSearch), "Open chat search / open chat"},
+			{hk(n.Search), "Search message history"},
+			{hk(n.Favourite), "Toggle favourite (chats only)"},
+			{hk(n.ChannelHide), "Toggle hide/unhide channel (channels only)"},
+			{hk(n.Presence), "Presence status of chat participants (chats only, feature: presence_enabled)"},
+			{hk(n.Notifications), "Cycle notification mode"},
+			{hk(n.Sleep), "Enter sleep / idle mode (stop polling)"},
+			{hk(n.Help), "Show this help"},
+			{hk(n.PageUp) + " / " + hk(n.PageDown), "Scroll messages up / down"},
+			{hk(n.Quit) + " / Ctrl+C", "Quit (Ctrl+C always quits)"},
 		}},
-		{"Message Selection (m)", [][2]string{
-			{"j / k", "Navigate messages"},
-			{"v", "View message popup"},
-			{"y", "Yank message to clipboard"},
-			{"u", "Extract URLs"},
-			{"o", "Open URLs"},
-			{"r", "React to message"},
-			{"a", "Reply (quote) message"},
-			{"d", "Delete message"},
-			{"e", "Edit message"},
-			{"p", "Presence status (feature: presence_enabled)"},
-			{"i", "User profile info (feature: user_profile_enabled)"},
-			{"ESC / m", "Exit selection mode"},
+		{"Message Selection (" + hk(n.Messages) + ")", [][2]string{
+			{hk(msg.Next) + " / " + hk(msg.Prev), "Navigate messages"},
+			{hk(msg.View), "View message popup"},
+			{hk(msg.Yank), "Yank message to clipboard"},
+			{hk(msg.YankURL), "Extract URLs"},
+			{hk(msg.OpenURL), "Open URLs"},
+			{hk(msg.React), "React to message"},
+			{hk(msg.Reply), "Reply (quote) message"},
+			{hk(msg.Delete), "Delete message"},
+			{hk(msg.Edit), "Edit message"},
+			{hk(msg.Editor), "Open message in external editor"},
+			{hk(msg.Presence), "Presence status (feature: presence_enabled)"},
+			{hk(msg.Profile), "User profile info (feature: user_profile_enabled)"},
+			{hk(msg.Close), "Exit selection mode"},
 		}},
-		{"Message View Popup (v)", [][2]string{
-			{"j / k", "Navigate to next/prev message"},
-			{"J / K", "Scroll message body"},
-			{"Tab", "Switch to attachment cursor mode"},
-			{"Enter", "Download and open selected attachment (feature: file_preview_enabled)"},
-			{"d", "Download selected attachment without opening (feature: file_preview_enabled)"},
-			{"ESC / q / v", "Close popup"},
+		{"Message View Popup (" + hk(msg.View) + ")", [][2]string{
+			{hk(view.Next) + " / " + hk(view.Prev), "Navigate to next/prev message or attachment"},
+			{hk(view.PageDown) + " / " + hk(view.PageUp), "Scroll message body"},
+			{hk(view.Attachments), "Switch to attachment cursor mode"},
+			{hk(view.Confirm), "Download and open selected attachment (feature: file_preview_enabled)"},
+			{hk(view.Download), "Download selected attachment without opening (feature: file_preview_enabled)"},
+			{hk(view.Editor), "Open message in external editor"},
+			{hk(view.Close), "Close popup"},
 		}},
-		{"History Search (/)", [][2]string{
-			{"Enter", "Submit query / focus results / Expand context"},
-			{"j / k", "Navigate results"},
-			{"y", "Yank selected message"},
-			{"u", "Extract URLs"},
-			{"o", "Open URLs"},
-			{"g", "Go to message in normal view"},
-			{"ESC", "Close search popup"},
+		{"History Search (" + hk(n.Search) + ")", [][2]string{
+			{hk(searchIn.Submit), "Submit query / focus results"},
+			{hk(search.Next) + " / " + hk(search.Prev), "Navigate results"},
+			{hk(search.Yank), "Yank selected message"},
+			{hk(search.YankURL), "Extract URLs"},
+			{hk(search.OpenURL), "Open URLs"},
+			{hk(search.Goto), "Go to message in normal view"},
+			{hk(search.Expand), "Expand context around the result"},
+			{hk(search.EditQuery), "Edit the query"},
+			{hk(search.Close), "Close search popup"},
 		}},
-		{"Chat Search (c)", [][2]string{
+		{"Chat Search (" + hk(n.ChatSearch) + ")", [][2]string{
 			{"Type", "Filter local chats"},
-			{"Enter", "Open selected chat / direct open by email"},
-			{"j / k", "Navigate results"},
-			{"ESC", "Close popup"},
+			{hk(chatIn.Submit), "Open typed email, or focus results"},
+			{hk(chatIn.FocusResults), "Move from the input into the result list"},
+			{hk(chat.Next) + " / " + hk(chat.Prev), "Navigate results"},
+			{hk(chat.Open), "Open the selected chat"},
+			{hk(chat.EditQuery), "Edit the query"},
+			{hk(chat.Close), "Close popup"},
 		}},
 		{"Composing Messages", [][2]string{
-			{"Type", "Write message (Alt+Enter for newline)"},
+			{"Type", "Write message (" + hk(compose.Newline) + " for newline)"},
 			{"@", "Open autocomplete mention popup"},
-			{"j / k / Tab", "Navigate suggestions (when mention popup is open)"},
-			{"Enter", "Select suggestion (when open) / Send message"},
-			{"Ctrl+v", "Paste image from clipboard"},
-			{"Ctrl+f", "Browse and attach file (feature: file_upload_enabled)"},
-			{"Ctrl+g", "Compose/edit in external editor (e.g. vim)"},
-			{"ESC", "Cancel composing"},
+			{hk(mention.Prev) + " / " + hk(mention.Next), "Navigate suggestions (when mention popup is open)"},
+			{hk(mention.Confirm), "Select suggestion (when open)"},
+			{hk(compose.Send), "Send message"},
+			{hk(compose.PasteImage), "Paste image from clipboard"},
+			{hk(compose.Attach), "Browse and attach file (feature: file_upload_enabled)"},
+			{hk(compose.Editor), "Compose/edit in external editor (e.g. vim)"},
+			{hk(compose.Cancel), "Cancel composing"},
+		}},
+		{"Reactions (" + hk(msg.React) + ")", [][2]string{
+			{hk(react.Like), "👍 like"},
+			{hk(react.Heart), "❤️ heart"},
+			{hk(react.Laugh), "😂 laugh"},
+			{hk(react.Surprised), "😮 surprised"},
+			{hk(react.Sad), "😢 sad"},
+			{hk(react.Angry), "😡 angry"},
+			{hk(react.Close), "Cancel"},
+		}},
+		{"Delete Confirm", [][2]string{
+			{hk(del.Yes), "Delete the message"},
+			{hk(del.No), "Cancel"},
+		}},
+		{"File Picker", [][2]string{
+			{hk(fp.Next) + " / " + hk(fp.Prev), "Navigate files"},
+			{hk(fp.Open), "Enter a directory"},
+			{hk(fp.Select), "Attach the selected file"},
+			{hk(fp.Back), "Parent directory"},
+			{hk(fp.Sort), "Change sort"},
+			{hk(fp.SortOrder), "Change sort order"},
+			{hk(fp.Hidden), "Toggle hidden files"},
+			{hk(fp.Close), "Cancel"},
 		}},
 	}
 
@@ -6309,13 +6509,14 @@ func (m Model) clampHelpScrollOffset() {
 }
 
 func (m Model) handleHelpPopupKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "q", "?", "enter":
+	k := m.app.Keys.Help
+	switch {
+	case pressed(msg, k.Close):
 		m.app.HelpPopupMode = false
-	case "j", "down":
+	case pressed(msg, k.Next):
 		m.app.HelpScrollOffset++
 		m.clampHelpScrollOffset()
-	case "k", "up":
+	case pressed(msg, k.Prev):
 		m.app.HelpScrollOffset--
 		m.clampHelpScrollOffset()
 	}
@@ -6323,8 +6524,9 @@ func (m Model) handleHelpPopupKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) handleFilePickerKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "q":
+	k := m.app.Keys.FilePicker
+	switch {
+	case pressed(msg, k.Close):
 		m.app.FilePickerPopupMode = false
 		return m, nil
 	}
@@ -6332,7 +6534,7 @@ func (m Model) handleFilePickerKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.filepicker, cmd = m.filepicker.Update(msg)
 
-	if msg.String() == "s" || msg.String() == "ctrl+s" || msg.String() == "o" || msg.String() == "ctrl+o" {
+	if pressed(msg, k.Sort) || pressed(msg, k.SortOrder) {
 		_ = SaveFilepickerSettings(m.filepicker.SortBy.String(), m.filepicker.SortOrder.String(), m.filepicker.CurrentDirectory)
 	}
 
@@ -6372,7 +6574,7 @@ func (m Model) renderHelpPopup(w, h int) string {
 	var scrollIndicator string
 	if totalContentLines > viewportH {
 		percent := int(float64(m.app.HelpScrollOffset) / float64(maxScroll) * 100)
-		scrollIndicator = fmt.Sprintf(" %s %d%%", dimStyle.Render("• Scroll j/k or ↓/↑ •"), percent)
+		scrollIndicator = fmt.Sprintf(" %s %d%%", dimStyle.Render(fmt.Sprintf("• Scroll %s •", slashKeys(m.app.Keys.Help.Next, m.app.Keys.Help.Prev))), percent)
 	}
 
 	title := lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render("Keyboard Shortcuts") + scrollIndicator
@@ -6396,7 +6598,7 @@ func (m Model) renderHelpPopup(w, h int) string {
 	lines = append(lines, title, "")
 	lines = append(lines, visibleContent...)
 
-	footer := dimStyle.Italic(true).Render("Press ESC / q / ? to close")
+	footer := dimStyle.Italic(true).Render("Press " + FormatKeys(m.app.Keys.Help.Close, " / ") + " to close")
 	lines = append(lines, footer)
 
 	return lipgloss.NewStyle().
@@ -6412,17 +6614,18 @@ func (m Model) renderHelpPopup(w, h int) string {
 // ---------------------------------------------------------------------------
 
 func (m Model) handlePresencePopupKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "q", "p", "enter":
+	k := m.app.Keys.Presence
+	switch {
+	case pressed(msg, k.Close):
 		m.app.PresencePopupMode = false
 		m.app.PresenceChatMode = false
 		m.app.PresenceData = nil
 		m.app.PresenceChatData = nil
-	case "up", "k":
+	case pressed(msg, k.Prev):
 		if m.app.PresenceChatMode && m.app.PresenceScrollOffset > 0 {
 			m.app.PresenceScrollOffset--
 		}
-	case "down", "j":
+	case pressed(msg, k.Next):
 		if m.app.PresenceChatMode {
 			popupH := m.height * 65 / 100
 			if popupH < 10 {
@@ -6532,10 +6735,11 @@ func (m Model) renderPresencePopup(w, h int) string {
 			}
 
 			if len(m.app.PresenceChatData) > availableHeight {
-				scrollIndicator := dimStyle.Render(fmt.Sprintf(" (Showing %d-%d of %d, use j/k to scroll)",
+				scrollIndicator := dimStyle.Render(fmt.Sprintf(" (Showing %d-%d of %d, use %s to scroll)",
 					m.app.PresenceScrollOffset+1,
 					min(m.app.PresenceScrollOffset+availableHeight, len(m.app.PresenceChatData)),
-					len(m.app.PresenceChatData)))
+					len(m.app.PresenceChatData),
+					slashKeys(m.app.Keys.Presence.Next, m.app.Keys.Presence.Prev)))
 				lines[2] = labelStyle.Render("Chat: ") + m.app.PresenceUserName + scrollIndicator
 			}
 		}
@@ -6560,7 +6764,7 @@ func (m Model) renderPresencePopup(w, h int) string {
 		}
 	}
 
-	footer := dimStyle.Italic(true).Render("Press ESC / q / p to close")
+	footer := dimStyle.Italic(true).Render("Press " + FormatKeys(m.app.Keys.Presence.Close, " / ") + " to close")
 	innerH := h - 4
 	if innerH < 4 {
 		innerH = 4
@@ -6591,8 +6795,8 @@ func (m Model) renderPresencePopup(w, h int) string {
 // ---------------------------------------------------------------------------
 
 func (m Model) handleUserProfilePopupKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "q", "i", "enter":
+	switch {
+	case pressed(msg, m.app.Keys.Profile.Close):
 		m.app.UserProfilePopupMode = false
 		m.app.UserProfileData = nil
 	}
@@ -6648,7 +6852,7 @@ func (m Model) renderUserProfilePopup(w, h int) string {
 		}
 	}
 
-	footer := dimStyle.Italic(true).Render("Press ESC / q / i to close")
+	footer := dimStyle.Italic(true).Render("Press " + FormatKeys(m.app.Keys.Profile.Close, " / ") + " to close")
 	innerH := h - 4
 	if innerH < 4 {
 		innerH = 4
@@ -7001,7 +7205,15 @@ func (m Model) renderFilePickerPopup(w, h int) string {
 	// Render the filepicker component
 	lines = append(lines, m.filepicker.View())
 
-	footer := dimStyle.Italic(true).Render("j/k or ↑/↓: Navigate • s: Change Sort • o: Change Order • .: Toggle Hidden • Enter: Attach • Esc / q: Cancel")
+	fpk := m.app.Keys.FilePicker
+	footer := dimStyle.Italic(true).Render(fmt.Sprintf("%s: Navigate • %s: Change Sort • %s: Change Order • %s: Toggle Hidden • %s: Attach • %s: Cancel",
+		slashKeys(fpk.Next, fpk.Prev),
+		FormatKeys(fpk.Sort, "/"),
+		FormatKeys(fpk.SortOrder, "/"),
+		FormatKeys(fpk.Hidden, "/"),
+		FormatKeys(fpk.Select, "/"),
+		FormatKeys(fpk.Close, "/"),
+	))
 	lines = append(lines, "", footer)
 
 	return lipgloss.NewStyle().

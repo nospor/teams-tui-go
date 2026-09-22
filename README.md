@@ -348,45 +348,201 @@ The external editor command can be configured in your `config.json` via the `"ex
 
 ## Keyboard Controls
 
-| Key          | Action                                                    |
-| ------------ | --------------------------------------------------------- |
-| `↑` / `k`    | Move up in list (within active section)                   |
-| `↓` / `j`    | Move down in list (within active section)                 |
-| `Tab`        | Switch between Chats & Channels sections (in Normal Mode) |
-| `PgUp` / `K` | Scroll messages up                                        |
-| `PgDn` / `J` | Scroll messages down                                      |
-| `/`          | Open search input (in Normal Mode)                        |
-| `Esc`        | Clear active search, or enter sleep/idle mode (Normal Mode) |
-| `c`          | Open chat search / chat creation popup                    |
-| `f`          | Toggle ★ favourite on selected chat (chats only)          |
-| `h`          | Toggle hide/unhide on selected channel (channels only)    |
-| `i`          | Enter compose mode                                        |
-| `Ctrl+V`     | Paste image from clipboard (in Compose Mode)              |
-| `Ctrl+f`     | Browse and attach file from computer (in Compose Mode)    |
-| `Ctrl+g`     | Compose/edit message in external editor (in Compose Mode) |
-| `Enter`      | Send message                                              |
-| `Alt+Enter`  | New line in message                                       |
-| `Esc`        | Cancel compose                                            |
-| `n`          | Toggle notification mode                                  |
-| `?`          | Show help popup (keyboard reference + feature status)     |
-| `m`          | Enter/Exit **Message Mode** (to select/react/delete/copy) |
-| `v`          | View details/reactions of selected message (Message Mode) |
-| `Ctrl+g`     | View selected message in external editor (in Message Mode / Message View Popup) |
-| `Tab`        | Switch to attachment cursor in `v` popup (in Message View Popup) |
-| `Enter`      | Download and open selected attachment (in `v` attachment cursor) |
-| `d`          | Download selected attachment without opening (in `v` attachment cursor) |
-| `r`          | React to selected message (in Message Mode)               |
-| `y`          | Copy (yank) message text (in Message Mode)                |
-| `u`          | Copy (yank) URL from message (in Message Mode / History Search) |
-| `o`          | Open URL from message (in Message Mode / History Search / URL list) |
-| `g`          | Go to/jump to message in normal view (in History Search results) |
-| `d`          | Delete selected message (in Message Mode)                 |
-| `e`          | Edit selected message (in Message Mode)                   |
-| `a`          | Answer (reply) to selected message (in Message Mode)      |
-| `p`          | Show presence status of sender (`presence_enabled`)       |
-| `i`          | Show profile info of sender (`user_profile_enabled`)      |
-| `1-6`        | Send reaction (in Reaction Mode)                          |
-| `q`          | Quit                                                      |
+Defaults are vim-style. The `?` help popup and the hints on each panel use whatever you have configured.
+
+Override keys in `~/.config/teams-tui-go/config.json` under `keybindings`. Each value is a list, so one action can be both `j` and `down`. Omit an action to keep its default. Setting an action **replaces** its list, so to add a key you must repeat the ones you still want. An empty list unbinds that action. `Ctrl+C` always quits from the main screen.
+
+A name at the top level (`next`, `prev`, `page_down`, `page_up`, `close`, `quit`, `yank`, `yank_url`, `open_url`, `confirm`, `cancel`) applies to every mode that has that action. A block named after a mode replaces that action only there. Key names are Bubble Tea names: `j`, `K`, `up`, `down`, `pgup`, `pgdown`, `esc`, `enter`, `tab`, `ctrl+g`, `alt+enter`. `K` is shift+k.
+
+```json
+{
+  "keybindings": {
+    "next": ["down", "j"],
+    "prev": ["up", "k"],
+    "normal": {
+      "compose": ["i", "enter"]
+    },
+    "message": {
+      "delete": ["x"]
+    }
+  }
+}
+```
+
+If two actions in the same mode are given the same key, the one you set explicitly wins over a default. If you set both, the earlier action in that mode keeps the key, and a warning is printed at startup.
+
+### normal
+
+| Action          | Default keys  | What it does                          |
+| --------------- | ------------- | ------------------------------------- |
+| `next`          | `j`, `down`   | Next chat or channel                  |
+| `prev`          | `k`, `up`     | Previous chat or channel              |
+| `section`       | `tab`         | Switch between chats and channels     |
+| `page_down`     | `J`, `pgdown` | Scroll messages down                  |
+| `page_up`       | `K`, `pgup`   | Scroll messages up                    |
+| `notifications` | `n`           | Cycle notification mode               |
+| `help`          | `?`           | Open help                             |
+| `compose`       | `i`           | Compose                               |
+| `chat_search`   | `c`           | Find or start a chat                  |
+| `search`        | `/`           | Search history                        |
+| `sleep`         | `esc`         | Clear highlights, or enter sleep mode |
+| `messages`      | `m`           | Select a message                      |
+| `favourite`     | `f`           | Toggle favourite                      |
+| `presence`      | `p`           | Chat presence                         |
+| `channel_hide`  | `h`           | Hide or unhide a channel              |
+| `quit`          | `q`           | Quit (`ctrl+c` always quits too)      |
+
+### compose
+
+Only these keys are commands. Everything else is typed into the message.
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `cancel` | `esc` | Leave compose |
+| `send` | `enter` | Send |
+| `newline` | `alt+enter`, `shift+enter`, `ctrl+enter` | New line |
+| `editor` | `ctrl+g` | External editor |
+| `attach` | `ctrl+f` | Attach a file |
+| `paste_image` | `ctrl+v`, `ctrl+shift+v` | Paste a clipboard image |
+
+### mention
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `cancel` | `esc` | Close suggestions |
+| `prev` | `up`, `shift+tab` | Previous suggestion |
+| `next` | `down`, `tab` | Next suggestion |
+| `confirm` | `enter` | Insert the suggestion |
+
+### message
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `close` | `esc`, `m` | Leave selection |
+| `next` | `j`, `down` | Newer message |
+| `prev` | `k`, `up` | Older message |
+| `react` | `r` | Open reactions |
+| `yank` | `y` | Copy the message |
+| `delete` | `d` | Delete your message |
+| `editor` | `ctrl+g` | Open in the external editor |
+| `edit` | `e` | Edit your message |
+| `reply` | `a` | Reply |
+| `yank_url` | `u` | Copy a URL |
+| `open_url` | `o` | Open a URL |
+| `view` | `v` | Open the message popup |
+| `presence` | `p` | Sender presence |
+| `profile` | `i` | Sender profile |
+
+### message_view
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `close` | `esc`, `q`, `v` | Close the popup |
+| `editor` | `ctrl+g` | External editor |
+| `confirm` | `enter` | Download and open the attachment, or close |
+| `download` | `d` | Download without opening |
+| `attachments` | `tab` | Toggle the attachment cursor |
+| `next` | `j`, `down` | Next attachment or message |
+| `prev` | `k`, `up` | Previous attachment or message |
+| `page_down` | `J`, `shift+down`, `pgdown` | Scroll the body |
+| `page_up` | `K`, `shift+up`, `pgup` | Scroll the body |
+
+### reaction
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `close` | `esc`, `r` | Close the picker |
+| `like` | `1` | 👍 |
+| `heart` | `2` | ❤️ |
+| `laugh` | `3` | 😂 |
+| `surprised` | `4` | 😮 |
+| `sad` | `5` | 😢 |
+| `angry` | `6` | 😡 |
+
+### delete_confirm
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `yes` | `y`, `Y` | Delete |
+| `no` | `n`, `N`, `esc` | Cancel |
+
+### url_list
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `close` | `esc`, `q` | Close the list |
+| `next` | `j`, `down` | Next URL |
+| `prev` | `k`, `up` | Previous URL |
+| `confirm` | `enter` | Copy or open the selected URL |
+| `yank` | `y` | Copy |
+| `open_url` | `o` | Open |
+
+### search_input
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `cancel` | `esc` | Close search |
+| `submit` | `enter` | Run the query |
+
+### search_results
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `close` | `esc`, `q` | Close search |
+| `next` | `j`, `down` | Next result |
+| `prev` | `k`, `up` | Previous result |
+| `edit_query` | `/` | Focus the query |
+| `goto` | `g` | Jump to the message |
+| `yank` | `y` | Copy the message |
+| `expand` | `enter` | Show more context |
+| `yank_url` | `u` | Copy a URL |
+| `open_url` | `o` | Open a URL |
+
+### chat_search_input
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `cancel` | `esc` | Leave the field |
+| `focus_results` | `down`, `up`, `tab` | Move into the result list |
+| `submit` | `enter` | Open by email, or focus results |
+
+### chat_search_results
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `close` | `esc`, `q` | Close the popup |
+| `next` | `j`, `down` | Next result |
+| `prev` | `k`, `up` | Previous result |
+| `edit_query` | `/` | Focus the field |
+| `open` | `enter` | Open the selected chat |
+
+### help, presence, profile
+
+| Mode | Action | Default keys | What it does |
+| --- | --- | --- | --- |
+| `help` | `close` | `esc`, `q`, `?`, `enter` | Close help |
+| `help` | `next` / `prev` | `j` `down` / `k` `up` | Scroll |
+| `presence` | `close` | `esc`, `q`, `p`, `enter` | Close presence |
+| `presence` | `next` / `prev` | `j` `down` / `k` `up` | Scroll the list |
+| `profile` | `close` | `esc`, `q`, `i`, `enter` | Close the profile |
+
+### filepicker
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `next` | `j`, `down`, `ctrl+n` | Next entry |
+| `prev` | `k`, `up`, `ctrl+p` | Previous entry |
+| `page_down` | `J`, `pgdown` | Page down |
+| `page_up` | `K`, `pgup` | Page up |
+| `top` | `g` | First entry |
+| `bottom` | `G` | Last entry |
+| `back` | `h`, `backspace`, `left`, `esc` | Parent directory |
+| `open` | `l`, `right`, `enter` | Enter a directory |
+| `select` | `enter` | Choose the file |
+| `sort` | `s`, `ctrl+s` | Change sort type |
+| `sort_order` | `o`, `ctrl+o` | Toggle sort order |
+| `hidden` | `.` | Toggle hidden files |
+| `close` | `esc`, `q` | Cancel |
 
 ---
 
@@ -394,7 +550,7 @@ The external editor command can be configured in your `config.json` via the `"ex
 
 | File                                          | Purpose                             |
 | --------------------------------------------- | ----------------------------------- |
-| `~/.config/teams-tui-go/config.json`           | Client ID, notification mode, limits |
+| `~/.config/teams-tui-go/config.json`           | Client ID, notification mode, limits, keybindings |
 | `~/.config/teams-tui-go/favourites.json`       | Pinned/favourite chat IDs           |
 | `~/.cache/teams-tui-go/token.json`             | OAuth2 access + refresh tokens      |
 | `~/.cache/teams-tui-go/profile.json`           | Cached user profile                 |

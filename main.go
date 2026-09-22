@@ -349,7 +349,6 @@ func loadChatPresenceCmd(clientID string, userIDs []string) tea.Cmd {
 	}
 }
 
-
 // loadUserProfileCmd fetches the full profile for a user by their Azure AD user ID.
 // Requires User.ReadBasic.All (or User.Read.All for extended info); returns MsgUserProfileLoaded.
 func loadUserProfileCmd(clientID, userID string) tea.Cmd {
@@ -795,6 +794,16 @@ func main() {
 		if cfg.CustomChatIcons != nil {
 			app.CustomChatIcons = cfg.CustomChatIcons
 		}
+		if len(cfg.Keybindings) > 0 {
+			km, warns := ResolveKeyMap(cfg.Keybindings)
+			app.Keys = km
+			for _, w := range warns {
+				fmt.Printf("⚠️ %s\n", w)
+			}
+			if len(warns) > 0 {
+				app.SetStatus(warns[0], 8*time.Second)
+			}
+		}
 	}
 
 	// Resolve optional feature flags once at startup.
@@ -847,7 +856,6 @@ func main() {
 	// Load persisted favourites and apply them so favourites appear at the top on launch.
 	model.favourites = LoadFavourites()
 	model.unhiddenChannels = LoadUnhiddenChannels()
-
 
 	// Fetch any favourited chats that weren't returned by the regular API call
 	// (e.g. chats with very old activity that fell outside chat_limit).

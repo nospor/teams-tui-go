@@ -145,8 +145,6 @@ func SaveFilepickerSettings(sortBy string, sortOrder string, currentDirectory st
 	return os.WriteFile(filepath.Join(dir, "filepicker_settings.json"), data, 0o600)
 }
 
-
-
 const appDirName = "teams-tui-go"
 
 // defaultClientID is the Microsoft Teams client ID fallback.
@@ -167,21 +165,25 @@ type Config struct {
 	// Optional feature flags — each defaults to false (disabled).
 	// When enabled, the corresponding Graph API permission must be granted
 	// in the Azure app registration and the cached token refreshed.
-	FilePreviewEnabled    *bool `json:"file_preview_enabled,omitempty"`    // requires Files.Read
-	FilePreviewInTerminal *bool `json:"file_preview_in_terminal,omitempty"` // show image in terminal if file_preview_enabled is true
-	FileUploadEnabled     *bool `json:"file_upload_enabled,omitempty"`     // requires Files.ReadWrite
-	PresenceEnabled       *bool `json:"presence_enabled,omitempty"`        // requires Presence.Read.All
-	UserProfileEnabled    *bool `json:"user_profile_enabled,omitempty"`   // requires User.ReadBasic.All
-	UserProfileExtended   *bool `json:"user_profile_extended,omitempty"`  // requires User.Read.All (admin consent)
-	TeamsChannelsEnabled  *bool `json:"teams_channels_enabled,omitempty"` // requires Team.ReadBasic.All + Channel.ReadBasic.All + ChannelMessage.Read.All + ChannelMessage.Send + ChannelMessage.ReadWrite
-	ChannelMentionsEnabled *bool `json:"channel_mentions_enabled,omitempty"` // requires TeamMember.Read.All to load members for autocomplete in channels
-	ChannelMsgRefreshMin   *int  `json:"channel_msg_refresh_min,omitempty"`
-	SqliteEnabled          *bool `json:"sqlite_enabled,omitempty"`
+	FilePreviewEnabled     *bool   `json:"file_preview_enabled,omitempty"`     // requires Files.Read
+	FilePreviewInTerminal  *bool   `json:"file_preview_in_terminal,omitempty"` // show image in terminal if file_preview_enabled is true
+	FileUploadEnabled      *bool   `json:"file_upload_enabled,omitempty"`      // requires Files.ReadWrite
+	PresenceEnabled        *bool   `json:"presence_enabled,omitempty"`         // requires Presence.Read.All
+	UserProfileEnabled     *bool   `json:"user_profile_enabled,omitempty"`     // requires User.ReadBasic.All
+	UserProfileExtended    *bool   `json:"user_profile_extended,omitempty"`    // requires User.Read.All (admin consent)
+	TeamsChannelsEnabled   *bool   `json:"teams_channels_enabled,omitempty"`   // requires Team.ReadBasic.All + Channel.ReadBasic.All + ChannelMessage.Read.All + ChannelMessage.Send + ChannelMessage.ReadWrite
+	ChannelMentionsEnabled *bool   `json:"channel_mentions_enabled,omitempty"` // requires TeamMember.Read.All to load members for autocomplete in channels
+	ChannelMsgRefreshMin   *int    `json:"channel_msg_refresh_min,omitempty"`
+	SqliteEnabled          *bool   `json:"sqlite_enabled,omitempty"`
 	ExternalEditor         *string `json:"external_editor,omitempty"`
 	BrowserCommand         *string `json:"browser_command,omitempty"`
 	ImageViewer            *string `json:"image_viewer,omitempty"`
 	YoutrackCommand        *string `json:"youtrack_command,omitempty"`
 	GitlabCommand          *string `json:"gitlab_command,omitempty"`
+
+	// Keybindings overrides default keys. Omitted actions keep their defaults.
+	// See README for the action ids. Not written by InitConfig.
+	Keybindings json.RawMessage `json:"keybindings,omitempty"`
 }
 
 // GetAppDir returns ~/.config/teams-tui-go/, creating it if necessary.
@@ -597,4 +599,3 @@ func ResolveGitlabCommand() string {
 	}
 	return ""
 }
-

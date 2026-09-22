@@ -142,6 +142,7 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
 9. **Feature Gates**: Check `m.app.Features.XxxEnabled` (not `ResolveFeatureXxx()`) inside the Bubble Tea event loop. Features are resolved once at startup into `app.Features` to avoid repeated file I/O per keypress.
 10. **Dynamic Scopes**: Always pass `BuildScopes()` to `StartDeviceFlow` and `RefreshAccessToken`. Never hard-code the scope string.
 11. **Rendering Performance Optimization**: When rendering long lists of items in the TUI (e.g., rendering hundreds of messages in `m.app.Messages`), avoid running expensive operations like HTML-to-text parsing and Lipgloss-based `wordWrap` dynamically inside the loop in `View()`. Instead, use cache fields directly on the structs (e.g. `WrappedLinesCached` on `Message` struct) to compute and store wrapped text once, invalidating only when the terminal width or search query changes.
+12. **Keybindings**: Defaults live in `DefaultKeyMap()` (`keys.go`). `config.json` `keybindings` is an overlay resolved once at startup into `app.Keys` via `ResolveKeyMap` — do not call `LoadConfig()` per keypress. Handlers match with `pressed(msg, binding)`. Help text and panel hints must read `FormatKeys` / `slashKeys` from `app.Keys`, not hardcoded key names. `ctrl+c` always quits from normal mode. A top-level action name (`next`, `prev`, `close`, …) applies to every mode that shares it; a mode object replaces that action in that mode only. Setting an action replaces its key list.
 
 ---
 
