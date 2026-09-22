@@ -467,10 +467,98 @@ func graphPut(accessToken, path string, content []byte, contentType string) ([]b
 
 // DriveItem represents a file or folder inside OneDrive or SharePoint.
 type DriveItem struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	WebURL string `json:"webUrl"`
-	ETag   string `json:"eTag"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	WebURL    string `json:"webUrl"`
+	WebDavURL string `json:"webDavUrl"`
+	ETag      string `json:"eTag"`
+}
+
+// fetchDriveItemMetadata reloads drive item fields required for Teams file attachments.
+func fetchDriveItemMetadata(accessToken, itemID, driveID string) (*DriveItem, error) {
+	var path string
+	if driveID != "" {
+		path = fmt.Sprintf("/drives/%s/items/%s?$select=id,name,eTag,webDavUrl,webUrl", driveID, itemID)
+	} else {
+		path = fmt.Sprintf("/me/drive/items/%s?$select=id,name,eTag,webDavUrl,webUrl", itemID)
+	}
+	body, err := graphGet(accessToken, path)
+	if err != nil {
+		return nil, err
+	}
+	var item DriveItem
+	if err := json.Unmarshal(body, &item); err != nil {
+		return nil, fmt.Errorf("unmarshal DriveItem metadata: %w", err)
+	}
+	return &item, nil
+}
+
+// createDriveItemViewLink creates an organization view sharing link for a drive item.
+func createDriveItemViewLink(accessToken, itemID, driveID string) (string, error) {
+	payload := map[string]any{
+		"type":  "view",
+		"scope": "organization",
+	}
+	var path string
+	if driveID != "" {
+		path = fmt.Sprintf("/drives/%s/items/%s/createLink", driveID, itemID)
+	} else {
+		path = fmt.Sprintf("/me/drive/items/%s/createLink", itemID)
+	}
+	body, err := graphPostWithResponse(accessToken, path, payload)
+	if err != nil {
+		return "", err
+	}
+	var res struct {
+		Link struct {
+			WebURL string `json:"webUrl"`
+		} `json:"link"`
+	}
+	if err := json.Unmarshal(body, &res); err != nil {
+		return "", fmt.Errorf("unmarshal createLink response: %w", err)
+	}
+	if res.Link.WebURL == "" {
+		return "", fmt.Errorf("createLink returned empty webUrl")
+	}
+	return res.Link.WebURL, nil
+}
+
+// buildReferenceAttachment prepares a Teams reference attachment from an uploaded drive item.
+// Microsoft Graph expects the eTag GUID as attachment id and webDavUrl (or a sharing link) as contentUrl.
+func buildReferenceAttachment(accessToken string, uploaded *DriveItem, driveID, fallbackName string) (MessageAttachment, error) {
+	meta, err := fetchDriveItemMetadata(accessToken, uploaded.ID, driveID)
+	if err != nil {
+		meta = uploaded
+	}
+
+	guid := extractGUIDFromETag(meta.ETag)
+	if guid == "" {
+		guid = generateGUID()
+	}
+
+	contentURL := meta.WebDavURL
+	if contentURL == "" {
+		if linkURL, linkErr := createDriveItemViewLink(accessToken, meta.ID, driveID); linkErr == nil {
+			contentURL = linkURL
+		}
+	}
+	if contentURL == "" {
+		contentURL = meta.WebURL
+	}
+	if contentURL == "" {
+		return MessageAttachment{}, fmt.Errorf("drive item %s has no webDavUrl, sharing link, or webUrl", meta.ID)
+	}
+
+	name := fallbackName
+	if meta.Name != "" {
+		name = meta.Name
+	}
+
+	return MessageAttachment{
+		ID:         guid,
+		Name:       &name,
+		ContentURL: &contentURL,
+	}, nil
 }
 
 // ChannelFilesFolder represents the response when getting a channel's files folder.
@@ -1002,15 +1090,11 @@ func uploadChatFiles(accessToken string, files []PendingFile, members []ChatMemb
 		if err := shareOneDriveFileWithMembers(accessToken, item.ID, members); err != nil {
 			return nil, fmt.Errorf("share OneDrive file: %w", err)
 		}
-		guid := extractGUIDFromETag(item.ETag)
-		if guid == "" {
-			guid = generateGUID()
+		att, err := buildReferenceAttachment(accessToken, item, "", f.Name)
+		if err != nil {
+			return nil, err
 		}
-		refAttachments = append(refAttachments, MessageAttachment{
-			ID:         guid,
-			Name:       &f.Name,
-			ContentURL: &item.WebURL,
-		})
+		refAttachments = append(refAttachments, att)
 	}
 	return refAttachments, nil
 }
@@ -1030,21 +1114,109 @@ func uploadChannelFiles(accessToken, teamID, channelID string, files []PendingFi
 		if err != nil {
 			return nil, fmt.Errorf("upload to SharePoint: %w", err)
 		}
-		guid := extractGUIDFromETag(item.ETag)
-		if guid == "" {
-			guid = generateGUID()
+		att, err := buildReferenceAttachment(accessToken, item, folder.ParentReference.DriveID, f.Name)
+		if err != nil {
+			return nil, err
 		}
-		refAttachments = append(refAttachments, MessageAttachment{
-			ID:         guid,
-			Name:       &f.Name,
-			ContentURL: &item.WebURL,
-		})
+		refAttachments = append(refAttachments, att)
 	}
 	return refAttachments, nil
 }
 
+// fileAttachmentMarker returns a private-use Unicode marker for file placeholder index idx (1-based).
+// These survive markdown/HTML conversion and are swapped for <attachment> tags afterwards.
+func fileAttachmentMarker(idx int) string {
+	return fmt.Sprintf("\uFFFEfile%d\uFFFF", idx)
+}
+
+// markFilePlaceholders replaces compose-time file placeholders in raw message text with
+// internal markers before HTML conversion. Returns the marked content and marker→attachment ID map.
+// Supports indexed [File N] and [File: filename] placeholders (filename matches left-to-right,
+// allowing duplicate filenames by attachment order).
+func markFilePlaceholders(content string, referenceAttachments []MessageAttachment) (string, map[string]string) {
+	markerToID := make(map[string]string)
+	if len(referenceAttachments) == 0 {
+		return content, markerToID
+	}
+
+	used := make([]bool, len(referenceAttachments))
+	matchByName := func(name string) (int, bool) {
+		name = strings.TrimSpace(name)
+		for i, att := range referenceAttachments {
+			if used[i] || att.Name == nil {
+				continue
+			}
+			if *att.Name == name {
+				used[i] = true
+				return i, true
+			}
+		}
+		return 0, false
+	}
+
+	reIndexed := regexp.MustCompile(`(?i)\[File\s+(\d+)\]`)
+	content = reIndexed.ReplaceAllStringFunc(content, func(match string) string {
+		sub := reIndexed.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return match
+		}
+		var idx int
+		if _, err := fmt.Sscanf(sub[1], "%d", &idx); err != nil || idx < 1 || idx > len(referenceAttachments) {
+			return match
+		}
+		marker := fileAttachmentMarker(idx)
+		markerToID[marker] = referenceAttachments[idx-1].ID
+		return marker
+	})
+
+	reLegacy := regexp.MustCompile(`(?i)\[File:\s*([^\]]+)\]`)
+	content = reLegacy.ReplaceAllStringFunc(content, func(match string) string {
+		sub := reLegacy.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return match
+		}
+		idx, ok := matchByName(sub[1])
+		if !ok {
+			return match
+		}
+		marker := fileAttachmentMarker(idx + 1)
+		markerToID[marker] = referenceAttachments[idx].ID
+		return marker
+	})
+
+	return content, markerToID
+}
+
+// applyFileAttachmentMarkers swaps internal file markers in HTML for Teams <attachment> tags.
+func applyFileAttachmentMarkers(htmlContent string, markerToID map[string]string) string {
+	for marker, attID := range markerToID {
+		tag := fmt.Sprintf(`<attachment id="%s"></attachment>`, attID)
+		htmlContent = strings.ReplaceAll(htmlContent, stdhtml.EscapeString(marker), tag)
+		htmlContent = strings.ReplaceAll(htmlContent, marker, tag)
+	}
+	return htmlContent
+}
+
+// wrapBodyHTMLForInlineAttachments wraps flat HTML in a paragraph when it contains inline
+// attachment tags but no block-level markup. Teams preserves inline placement more reliably this way.
+func wrapBodyHTMLForInlineAttachments(htmlContent string) string {
+	if !strings.Contains(htmlContent, "<attachment ") {
+		return htmlContent
+	}
+	lower := strings.ToLower(htmlContent)
+	if strings.Contains(lower, "<p>") || strings.Contains(lower, "<div>") ||
+		strings.Contains(lower, "<ul>") || strings.Contains(lower, "<ol>") ||
+		strings.Contains(lower, "<pre>") || strings.Contains(lower, "<table>") {
+		return htmlContent
+	}
+	return "<p>" + htmlContent + "</p>"
+}
+
 // formatMessageBodyWithImagesAndFiles prepares the payload body and attachments for inline images and file references.
 func formatMessageBodyWithImagesAndFiles(content string, members []ChatMember, images []PastedImage, referenceAttachments []MessageAttachment) (map[string]any, []map[string]any, []map[string]any, []map[string]any) {
+	content = replaceEmoticons(content)
+	content, fileMarkers := markFilePlaceholders(content, referenceAttachments)
+
 	var htmlContent string
 	if containsMarkdown(content) || strings.Contains(content, "\n") || strings.HasPrefix(content, " ") || strings.HasPrefix(content, "\t") || containsURL(content) {
 		htmlContent = markdownToHTML(content)
@@ -1052,6 +1224,7 @@ func formatMessageBodyWithImagesAndFiles(content string, members []ChatMember, i
 		htmlContent = stdhtml.EscapeString(content)
 	}
 
+	htmlContent = applyFileAttachmentMarkers(htmlContent, fileMarkers)
 	htmlContent, mentions := parseMentions(htmlContent, members)
 
 	var hostedContents []map[string]any
@@ -1085,6 +1258,11 @@ func formatMessageBodyWithImagesAndFiles(content string, members []ChatMember, i
 		}
 	}
 
+	usedFileIDs := make(map[string]bool, len(fileMarkers))
+	for _, attID := range fileMarkers {
+		usedFileIDs[attID] = true
+	}
+
 	// Handle reference attachments
 	var attachmentsPayload []map[string]any
 	for _, att := range referenceAttachments {
@@ -1095,15 +1273,12 @@ func formatMessageBodyWithImagesAndFiles(content string, members []ChatMember, i
 			"name":        *att.Name,
 		})
 
-		// Replace [File: filename] inline or append to the bottom
-		pattern := fmt.Sprintf(`\[[Ff]ile:\s*%s\]`, regexp.QuoteMeta(*att.Name))
-		reFile := regexp.MustCompile(pattern)
-		if reFile.MatchString(htmlContent) {
-			htmlContent = reFile.ReplaceAllString(htmlContent, fmt.Sprintf(`<attachment id="%s"></attachment>`, att.ID))
-		} else {
+		if !usedFileIDs[att.ID] {
 			htmlContent += fmt.Sprintf(`<br /><attachment id="%s"></attachment>`, att.ID)
 		}
 	}
+
+	htmlContent = wrapBodyHTMLForInlineAttachments(htmlContent)
 
 	bodyPayload := map[string]any{
 		"contentType": "html",
@@ -1819,10 +1994,10 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 		return ""
 	}
 
-	// Build an attachment lookup by ID.
+	// Build an attachment lookup by ID (case-insensitive — Teams may change GUID casing).
 	attByID := make(map[string]MessageAttachment, len(attachments))
 	for _, a := range attachments {
-		attByID[a.ID] = a
+		attByID[strings.ToLower(a.ID)] = a
 	}
 
 	// Build a map of mention ID string to user ID.
@@ -1839,6 +2014,7 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 	var lastChar rune
 	var tagAddedNewline bool
 	imgCounter := 0
+	var refFileNames []string
 
 	// ---- existing state ----
 	var inPre bool
@@ -2012,7 +2188,7 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 						break
 					}
 				}
-				if att, ok := attByID[attID]; ok {
+				if att, ok := attByID[strings.ToLower(attID)]; ok {
 					if att.Content != nil {
 						quote := attachmentQuoteLine(att, chatNames)
 						if quote != "" {
@@ -2028,6 +2204,14 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 					if att.ContentType != nil {
 						ct := strings.ToLower(*att.ContentType)
 						if ct == "messagereference" || ct == "forwardedmessagereference" {
+							continue
+						}
+						if ct == "reference" {
+							name := "Attachment"
+							if att.Name != nil && *att.Name != "" {
+								name = *att.Name
+							}
+							refFileNames = append(refFileNames, name)
 							continue
 						}
 					}
@@ -2184,7 +2368,39 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 		result = strings.ReplaceAll(result, "\n\n\n", "\n\n")
 	}
 
-	return strings.Trim(result, "\n\r")
+	result = strings.Trim(result, "\n\r")
+	if len(refFileNames) > 0 {
+		result = restoreInlineFileAttachmentsDisplay(result, refFileNames)
+	}
+	return result
+}
+
+// restoreInlineFileAttachmentsDisplay reinserts styled file attachment markers at double-space
+// gaps left when Teams strips inline <attachment> tags from the message body.
+func restoreInlineFileAttachmentsDisplay(text string, fileNames []string) string {
+	if len(fileNames) == 0 {
+		return text
+	}
+	fileStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8700"))
+	formatFile := func(name string) string {
+		return "📎 " + fileStyle.Render(name)
+	}
+
+	gapRe := regexp.MustCompile(`\s{2,}`)
+	gapLocs := gapRe.FindAllStringIndex(text, -1)
+	if len(gapLocs) >= len(fileNames) {
+		for i := len(fileNames) - 1; i >= 0; i-- {
+			loc := gapLocs[i]
+			display := formatFile(fileNames[i])
+			text = text[:loc[0]] + " " + display + " " + text[loc[1]:]
+		}
+		return text
+	}
+
+	for _, name := range fileNames {
+		text += " " + formatFile(name)
+	}
+	return text
 }
 
 // getAttachmentIcon returns an emoji icon based on the attachment's file extension

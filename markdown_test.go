@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -93,7 +94,7 @@ func TestHTMLToMarkdownConsecutiveURLs(t *testing.T) {
 
 	expected := "Hi Dana, some questions in tickets\n\nhttps://adwanted.youtrack.cloud/issue/SRDS-332\nhttps://adwanted.youtrack.cloud/issue/SRDS-338\nhttps://adwanted.youtrack.cloud/issue/SRDS-340"
 
-	got := HTMLToMarkdown(html)
+	got := HTMLToMarkdown(html, nil)
 	if got != expected {
 		t.Errorf("\nExpected:\n%s\n\nGot:\n%s", expected, got)
 	}
@@ -124,7 +125,7 @@ func TestHTMLToMarkdownPreservesIntentionalBlankLines(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := HTMLToMarkdown(tc.html)
+			got := HTMLToMarkdown(tc.html, nil)
 			if got != tc.expected {
 				t.Errorf("\nExpected:\n%s\n\nGot:\n%s", tc.expected, got)
 			}
@@ -132,10 +133,54 @@ func TestHTMLToMarkdownPreservesIntentionalBlankLines(t *testing.T) {
 	}
 }
 
+func TestHTMLToMarkdownReferenceAttachment(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+	refType := "reference"
+	attachments := []MessageAttachment{
+		{
+			ID:          "file-guid-1",
+			Name:        strPtr("CustomFiles2026.docx"),
+			ContentType: &refType,
+		},
+		{
+			ID:          "file-guid-2",
+			Name:        strPtr("Custom Files 2026 to share.xlsx"),
+			ContentType: &refType,
+		},
+	}
+	html := `<p>one  more  test</p><attachment id="file-guid-1"></attachment><attachment id="file-guid-2"></attachment>`
+	got := HTMLToMarkdown(html, attachments)
+	if !strings.Contains(got, "[File: CustomFiles2026.docx]") {
+		t.Fatalf("expected first file placeholder, got %q", got)
+	}
+	if !strings.Contains(got, "[File: Custom Files 2026 to share.xlsx]") {
+		t.Fatalf("expected second file placeholder, got %q", got)
+	}
+	if strings.Contains(got, "  more") || strings.Contains(got, "  test") {
+		t.Fatalf("expected gaps replaced by placeholders, got %q", got)
+	}
+}
+
+func TestRestoreFilePlaceholdersInText(t *testing.T) {
+	got := restoreFilePlaceholdersInText("one  more  test", []string{"a.docx", "b.xlsx"})
+	want := "one [File: a.docx] more [File: b.xlsx] test"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestWrapBodyHTMLForInlineAttachments(t *testing.T) {
+	in := `hello <attachment id="abc"></attachment> world`
+	got := wrapBodyHTMLForInlineAttachments(in)
+	if !strings.HasPrefix(got, "<p>") || !strings.HasSuffix(got, "</p>") {
+		t.Fatalf("expected paragraph wrapper, got %q", got)
+	}
+}
+
 func TestHTMLToMarkdownURLRoundTrip(t *testing.T) {
 	input := "Hi Dana, ticket links\n\nhttps://adwanted.youtrack.cloud/issue/SRDS-332\nhttps://adwanted.youtrack.cloud/issue/SRDS-338\nhttps://adwanted.youtrack.cloud/issue/SRDS-340"
 
-	got := HTMLToMarkdown(markdownToHTML(input))
+	got := HTMLToMarkdown(markdownToHTML(input), nil)
 	if got != input {
 		t.Errorf("\nRound-trip changed content.\nExpected:\n%s\n\nGot:\n%s", input, got)
 	}

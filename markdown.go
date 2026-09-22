@@ -230,7 +230,9 @@ func containsMarkdown(s string) bool {
 // HTMLToMarkdown converts a Teams message HTML body back to editable markdown
 // text. This is used when the user presses 'e' to edit an existing message so
 // that **bold**, *italic*, `code`, etc. are preserved in the edit box.
-func HTMLToMarkdown(htmlContent string) string {
+// When attachments are provided, reference file <attachment> tags are rendered
+// as [File: name] placeholders for readability in the external editor.
+func HTMLToMarkdown(htmlContent string, attachments []MessageAttachment) string {
 	if htmlContent == "" {
 		return ""
 	}
@@ -239,6 +241,11 @@ func HTMLToMarkdown(htmlContent string) string {
 		return ""
 	}
 
+	attByID := make(map[string]MessageAttachment, len(attachments))
+	for _, a := range attachments {
+		attByID[strings.ToLower(a.ID)] = a
+	}
+	var refFileNames []string
 	tokenizer := golanghtml.NewTokenizer(strings.NewReader(htmlContent))
 	var sb strings.Builder
 
@@ -347,6 +354,24 @@ func HTMLToMarkdown(htmlContent string) string {
 					lastChar = '\n'
 					tagAddedNewline = true
 				}
+			case "attachment":
+				var attID string
+				for _, a := range token.Attr {
+					if a.Key == "id" {
+						attID = a.Val
+						break
+					}
+				}
+				if att, ok := attByID[strings.ToLower(attID)]; ok && att.ContentType != nil {
+					ct := strings.ToLower(*att.ContentType)
+					if ct == "reference" {
+						name := "attachment"
+						if att.Name != nil && *att.Name != "" {
+							name = *att.Name
+						}
+						refFileNames = append(refFileNames, name)
+					}
+				}
 			case "p", "div":
 				// handled on close
 			}
@@ -440,5 +465,33 @@ func HTMLToMarkdown(htmlContent string) string {
 	for strings.Contains(result, "\n\n\n") {
 		result = strings.ReplaceAll(result, "\n\n\n", "\n\n")
 	}
-	return strings.Trim(result, "\n\r")
+	result = strings.Trim(result, "\n\r")
+	if len(refFileNames) > 0 {
+		result = restoreFilePlaceholdersInText(result, refFileNames)
+	}
+	return result
+}
+
+// restoreFilePlaceholdersInText reinserts [File: name] markers into message text.
+// Teams often strips inline attachment tags but leaves double-space gaps where files belonged.
+func restoreFilePlaceholdersInText(text string, fileNames []string) string {
+	if len(fileNames) == 0 {
+		return text
+	}
+
+	gapRe := regexp.MustCompile(`\s{2,}`)
+	gapLocs := gapRe.FindAllStringIndex(text, -1)
+	if len(gapLocs) >= len(fileNames) {
+		for i := len(fileNames) - 1; i >= 0; i-- {
+			loc := gapLocs[i]
+			placeholder := fmt.Sprintf("[File: %s]", fileNames[i])
+			text = text[:loc[0]] + " " + placeholder + " " + text[loc[1]:]
+		}
+		return text
+	}
+
+	for _, name := range fileNames {
+		text += fmt.Sprintf(" [File: %s]", name)
+	}
+	return text
 }

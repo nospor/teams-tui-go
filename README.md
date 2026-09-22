@@ -332,6 +332,9 @@ When `file_upload_enabled` is set to `true` in `config.json`, you can attach sma
 - A placeholder like `[File: filename.ext]` is inserted into the textarea. You can move, copy, or delete it to control inline message rendering.
 - When sending the message, files are automatically uploaded to OneDrive (for chats) or SharePoint (for channels) and attached as reference attachments to the message.
 
+> [!NOTE]
+> **Inline file placement in this TUI vs. the official Teams client:** While composing, a `[File: filename.ext]` placeholder controls where the attachment appears in the message text. teams-tui-go preserves that placement when displaying sent messages (including in the external editor via **Ctrl+g**). The official Teams desktop and web clients, however, typically render reference file attachments as separate file cards at the bottom of the message bubble, regardless of where you inserted the placeholder. This is Teams platform behaviour — not a limitation of teams-tui-go. Clipboard images (**Ctrl+V**) behave differently and can appear truly inline in both clients.
+
 ### External Editor (Composing & Viewing)
 
 You can use an external editor (such as `vim`, `neovim`, or `nano`) to either compose a new message or view an existing message:

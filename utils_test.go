@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -642,4 +643,132 @@ func TestHTMLToTextForwardedMessageReference(t *testing.T) {
 	}
 }
 
+func TestHTMLToTextInlineFileAttachmentRestore(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+	refType := "reference"
+	attachments := []MessageAttachment{
+		{ID: "id-1", Name: strPtr("CustomFiles2026.odt"), ContentType: &refType},
+		{ID: "id-2", Name: strPtr("Custom Files 2026 to share.xlsx"), ContentType: &refType},
+	}
+	html := `<p>one  more  test</p><attachment id="id-1"></attachment><attachment id="id-2"></attachment>`
+	text := stripANSI(HTMLToText(html, attachments, nil, nil))
+	if !strings.Contains(text, "CustomFiles2026.odt") || !strings.Contains(text, "Custom Files 2026 to share.xlsx") {
+		t.Fatalf("expected filenames inline in text, got %q", text)
+	}
+	if strings.Contains(text, "  more") || strings.Contains(text, "  test") {
+		t.Fatalf("expected double-space gaps filled, got %q", text)
+	}
+	idx1 := strings.Index(text, "CustomFiles2026.odt")
+	idx2 := strings.Index(text, "Custom Files 2026 to share.xlsx")
+	idxMore := strings.Index(text, "more")
+	if idx1 < 0 || idx2 < 0 || idxMore < 0 || !(idx1 < idxMore && idxMore < idx2) {
+		t.Fatalf("expected files inline around 'more', got %q", text)
+	}
+}
+
+func TestMarkFilePlaceholdersIndexed(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+	attachments := []MessageAttachment{
+		{ID: "aaa", Name: strPtr("first.pdf")},
+		{ID: "bbb", Name: strPtr("second.xlsx")},
+	}
+
+	content := "hello [File 1] world [File 2] end"
+	marked, markers := markFilePlaceholders(content, attachments)
+
+	if strings.Contains(marked, "[File 1]") || strings.Contains(marked, "[File 2]") {
+		t.Fatalf("expected placeholders replaced with markers, got %q", marked)
+	}
+	if len(markers) != 2 {
+		t.Fatalf("expected 2 markers, got %d", len(markers))
+	}
+	if markers[fileAttachmentMarker(1)] != "aaa" || markers[fileAttachmentMarker(2)] != "bbb" {
+		t.Fatalf("unexpected marker map: %v", markers)
+	}
+}
+
+func TestMarkFilePlaceholdersLegacyName(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+	name := "Custom Files 2026 to share.xlsx"
+	attachments := []MessageAttachment{{ID: "guid-1", Name: strPtr(name)}}
+
+	content := fmt.Sprintf("test [File: %s] tail", name)
+	marked, markers := markFilePlaceholders(content, attachments)
+
+	if strings.Contains(marked, "[File:") {
+		t.Fatalf("expected legacy placeholder replaced, got %q", marked)
+	}
+	if len(markers) != 1 {
+		t.Fatalf("expected 1 marker, got %d", len(markers))
+	}
+}
+
+func TestFormatMessageBodyWithImagesAndFilesInlineFiles(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+	url := "https://tenant.sharepoint.com/file.docx"
+	attachments := []MessageAttachment{
+		{ID: "id-1", Name: strPtr("a.docx"), ContentURL: strPtr(url)},
+		{ID: "id-2", Name: strPtr("b.docx"), ContentURL: strPtr(url)},
+	}
+
+	body, _, _, payload := formatMessageBodyWithImagesAndFiles(
+		"start [File: a.docx] middle [File: b.docx] end",
+		nil, nil, attachments,
+	)
+
+	html := body["content"].(string)
+	if strings.Contains(html, "[File:") {
+		t.Fatalf("placeholders should be replaced in HTML body, got %q", html)
+	}
+	if !strings.Contains(html, `<attachment id="id-1"></attachment>`) {
+		t.Fatalf("expected inline attachment 1 in body, got %q", html)
+	}
+	if !strings.Contains(html, `<attachment id="id-2"></attachment>`) {
+		t.Fatalf("expected inline attachment 2 in body, got %q", html)
+	}
+	if !strings.HasPrefix(html, "<p>") || !strings.HasSuffix(html, "</p>") {
+		t.Fatalf("expected paragraph wrapper for inline attachments, got %q", html)
+	}
+	idx1 := strings.Index(html, `<attachment id="id-1"></attachment>`)
+	idx2 := strings.Index(html, `<attachment id="id-2"></attachment>`)
+	if idx1 < 0 || idx2 < 0 || idx1 > idx2 {
+		t.Fatalf("expected attachments in order within body, got %q", html)
+	}
+	if len(payload) != 2 {
+		t.Fatalf("expected 2 attachment payloads, got %d", len(payload))
+	}
+}
+
+func TestMarkFilePlaceholdersDuplicateNames(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+	name := "report.pdf"
+	attachments := []MessageAttachment{
+		{ID: "id-1", Name: strPtr(name)},
+		{ID: "id-2", Name: strPtr(name)},
+	}
+	marked, markers := markFilePlaceholders("a [File: report.pdf] b [File: report.pdf] c", attachments)
+	if len(markers) != 2 {
+		t.Fatalf("expected 2 markers, got %d", len(markers))
+	}
+	if markers[fileAttachmentMarker(1)] != "id-1" || markers[fileAttachmentMarker(2)] != "id-2" {
+		t.Fatalf("unexpected marker assignment: %v", markers)
+	}
+	if strings.Contains(marked, "[File:") {
+		t.Fatalf("expected placeholders replaced, got %q", marked)
+	}
+}
+
+func TestFormatMessageBodyWithImagesAndFilesUnreferencedAppended(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+	url := "https://tenant.sharepoint.com/file.docx"
+	attachments := []MessageAttachment{
+		{ID: "id-orphan", Name: strPtr("unused.docx"), ContentURL: strPtr(url)},
+	}
+
+	body, _, _, _ := formatMessageBodyWithImagesAndFiles("hello", nil, nil, attachments)
+	html := body["content"].(string)
+	if !strings.Contains(html, `<attachment id="id-orphan"></attachment>`) {
+		t.Fatalf("expected unreferenced file appended at end, got %q", html)
+	}
+}
 
