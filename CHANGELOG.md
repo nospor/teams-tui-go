@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.3.1] - 2026-09-22
+
+### Features
+
+- *(keys)* **Let users override keybindings from config** - ([32d073a](https://github.com/nospor/teams-tui-go/commit/32d073ae845b6cbdefb88c4fa5393f23d0139557))
+
+
+> Keep the vim-style defaults, and apply an optional keybindings overlay
+> so the help popup and panel hints follow the keys actually in use
+
+
+
+### Bug Fixes
+
+- *(ui)* **Keep panel layout stable in narrow tmux panes** - ([44f50d9](https://github.com/nospor/teams-tui-go/commit/44f50d9236c5d44bd23a2064c4fff71caee0cc2b))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.3.0 [skip ci]** - ([2e3f13b](https://github.com/nospor/teams-tui-go/commit/2e3f13b0cb2bec330c7785ae8683554f594e3226))
+
+
+
 ## [1.3.0] - 2026-09-22
 
 ### Bug Fixes
