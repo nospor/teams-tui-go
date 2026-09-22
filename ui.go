@@ -18,6 +18,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/gen2brain/beeep"
 	"github.com/nospor/teams-tui-go/filepicker"
 	"regexp"
@@ -2969,7 +2970,7 @@ func (m Model) renderView() string {
 
 	right := m.renderRightPanel(msgW-2, innerH)
 
-	left := normalBorder.Width(chatW - 2).Height(innerH).Render(chatPanel)
+	left := fixedPanel(normalBorder, chatPanel, chatW-2, innerH)
 
 	top := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	mainView := lipgloss.JoinVertical(lipgloss.Left, top, m.renderStatusBar(m.width))
@@ -3132,12 +3133,9 @@ func (m Model) renderRightPanel(w, h int) string {
 		msgContent := lipgloss.Place(w, h-2, lipgloss.Center, lipgloss.Center,
 			lipgloss.NewStyle().Foreground(colDimGray).Align(lipgloss.Center).Render(idleMsg),
 		)
-		return normalBorder.Width(w).Height(h).
-			BorderForeground(colDimGray).
-			Render(lipgloss.JoinVertical(lipgloss.Left,
-				lipgloss.NewStyle().Foreground(colDimGray).Render("Idle"),
-				msgContent,
-			))
+		return fixedPanel(normalBorder.BorderForeground(colDimGray),
+			lipgloss.JoinVertical(lipgloss.Left, dimLine("Idle", w), msgContent),
+			w, h)
 	}
 
 	if !m.app.InputMode {
@@ -3181,13 +3179,11 @@ func (m Model) renderRightPanel(w, h int) string {
 			)
 		}
 		msgContent := m.renderMessages(w, h-1)
-		return normalBorder.Width(w).Height(h).
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(colGreen).
-			Render(lipgloss.JoinVertical(lipgloss.Left,
-				lipgloss.NewStyle().Foreground(colDimGray).Render(title),
-				msgContent,
-			))
+		return fixedPanel(
+			normalBorder.BorderStyle(lipgloss.RoundedBorder()).BorderForeground(colGreen),
+			lipgloss.JoinVertical(lipgloss.Left, dimLine(title, w), msgContent),
+			w, h,
+		)
 	}
 
 	// Input mode: split height between messages and textarea.
@@ -3236,15 +3232,14 @@ func (m Model) renderRightPanel(w, h int) string {
 			} else {
 				line = lipgloss.NewStyle().Foreground(lipgloss.Color("#E2E2E2")).Render("  " + line)
 			}
-			items = append(items, line)
+			items = append(items, fitLine(line, w))
 		}
 
-		mentionView = lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(colYellow).
-			Width(w).
-			Height(limit).
-			Render(lipgloss.JoinVertical(lipgloss.Left, items...))
+		mentionView = fixedPanel(
+			lipgloss.NewStyle().BorderStyle(lipgloss.RoundedBorder()).BorderForeground(colYellow),
+			lipgloss.JoinVertical(lipgloss.Left, items...),
+			w, limit,
+		)
 	}
 
 	msgH := h - inputH - mentionH - 1
@@ -3270,11 +3265,10 @@ func (m Model) renderRightPanel(w, h int) string {
 		}
 		title = "REPLYING TO " + sender + " (" + cancelKey + " to cancel)"
 	}
-	msgBox := normalBorder.Width(w).Height(msgH).
-		Render(lipgloss.JoinVertical(lipgloss.Left,
-			lipgloss.NewStyle().Foreground(colDimGray).Render(title),
-			msgContent,
-		))
+	msgBox := fixedPanel(normalBorder,
+		lipgloss.JoinVertical(lipgloss.Left, dimLine(title, w), msgContent),
+		w, msgH,
+	)
 
 	m.textarea.SetWidth(w)
 	m.textarea.SetHeight(inputH - 2)
@@ -3302,7 +3296,7 @@ func (m Model) renderRightPanel(w, h int) string {
 		hintText += fmt.Sprintf(", %s: open external editor)", FormatKeys(ck.Editor, "/"))
 	}
 
-	hintLine := lipgloss.NewStyle().Foreground(colDimGray).Render(hintText)
+	hintLine := dimLine(hintText, w)
 	inputParts := []string{hintLine}
 
 	if m.app.ReplyToMessage != nil {
@@ -3327,7 +3321,7 @@ func (m Model) renderRightPanel(w, h int) string {
 		bar := lipgloss.NewStyle().Foreground(lipgloss.Color("#4A90D9")).Bold(true).Render("▎")
 		name := lipgloss.NewStyle().Foreground(lipgloss.Color("#7EC8E3")).Bold(true).Render(sender)
 		text := lipgloss.NewStyle().Foreground(lipgloss.Color("#6C7A89")).Render(": " + preview)
-		quoteLine := bar + " " + name + text
+		quoteLine := fitLine(bar+" "+name+text, w)
 		inputParts = append(inputParts, quoteLine)
 		// Separator between quote and textarea.
 		inputParts = append(inputParts, lipgloss.NewStyle().Foreground(colDimGray).Render(strings.Repeat("─", w)))
@@ -3336,11 +3330,11 @@ func (m Model) renderRightPanel(w, h int) string {
 
 	inputParts = append(inputParts, m.textarea.View())
 
-	inputBox := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(colGreen).
-		Width(w).Height(inputH - 1).
-		Render(lipgloss.JoinVertical(lipgloss.Left, inputParts...))
+	inputBox := fixedPanel(
+		lipgloss.NewStyle().BorderStyle(lipgloss.RoundedBorder()).BorderForeground(colGreen),
+		lipgloss.JoinVertical(lipgloss.Left, inputParts...),
+		w, inputH-1,
+	)
 
 	if mentionView != "" {
 		return lipgloss.JoinVertical(lipgloss.Left, msgBox, mentionView, inputBox)
@@ -3513,7 +3507,7 @@ func (m Model) renderChatList(w, h int) string {
 			FormatKeys(nk.Quit, "/"),
 		)
 	}
-	title := lipgloss.NewStyle().Foreground(colDimGray).Render(titleText)
+	title := dimLine(titleText, w)
 
 	if len(m.app.Chats) == 0 {
 		return lipgloss.JoinVertical(lipgloss.Left, title, m.app.Status)
@@ -3623,6 +3617,7 @@ func (m Model) renderChatList(w, h int) string {
 				Background(colDarkGray).
 				Width(w).
 				MaxWidth(w).
+				Inline(true).
 				Render(labelStr)
 		} else {
 			typeTag := lipgloss.NewStyle().Foreground(colCyan).Render(chatTypeIcon)
@@ -3721,6 +3716,7 @@ func (m Model) renderChatList(w, h int) string {
 						Bold(unread).
 						Width(w).
 						MaxWidth(w).
+						Inline(true).
 						Render(prefix + "# " + entry.teamName + " » " + entry.channelName)
 				} else {
 					var textStyle lipgloss.Style
@@ -3992,29 +3988,33 @@ func (m Model) renderMessages(w, h int) string {
 // ---------------------------------------------------------------------------
 
 func (m Model) renderStatusBar(w int) string {
+	inner := w - 2
+	if inner < 1 {
+		inner = 1
+	}
 	if m.app.DeleteConfirmMode {
-		return bellBorder.Width(w - 2).Height(1).Render(
-			lipgloss.NewStyle().Foreground(colRed).Bold(true).Render(
-				fmt.Sprintf("DELETE MESSAGE? (%s:yes / %s:no)",
-					FormatKeys(m.app.Keys.DeleteConfirm.Yes, "/"),
-					FormatKeys(m.app.Keys.DeleteConfirm.No, "/"),
-				),
-			),
+		text := fmt.Sprintf("DELETE MESSAGE? (%s:yes / %s:no)",
+			FormatKeys(m.app.Keys.DeleteConfirm.Yes, "/"),
+			FormatKeys(m.app.Keys.DeleteConfirm.No, "/"),
+		)
+		return fixedPanel(bellBorder,
+			lipgloss.NewStyle().Foreground(colRed).Bold(true).Render(fitLine(text, inner)),
+			inner, 1,
 		)
 	}
 	if m.app.ReactionMode {
-		return normalBorder.Width(w - 2).Height(1).Render(
-			lipgloss.NewStyle().Foreground(colYellow).Render(
-				fmt.Sprintf("REACT: %s:👍 %s:❤️ %s:😂 %s:😮 %s:😢 %s:😡 (%s:cancel)",
-					FormatKeys(m.app.Keys.Reaction.Like, "/"),
-					FormatKeys(m.app.Keys.Reaction.Heart, "/"),
-					FormatKeys(m.app.Keys.Reaction.Laugh, "/"),
-					FormatKeys(m.app.Keys.Reaction.Surprised, "/"),
-					FormatKeys(m.app.Keys.Reaction.Sad, "/"),
-					FormatKeys(m.app.Keys.Reaction.Angry, "/"),
-					FormatKeys(m.app.Keys.Reaction.Close, "/"),
-				),
-			),
+		text := fmt.Sprintf("REACT: %s:👍 %s:❤️ %s:😂 %s:😮 %s:😢 %s:😡 (%s:cancel)",
+			FormatKeys(m.app.Keys.Reaction.Like, "/"),
+			FormatKeys(m.app.Keys.Reaction.Heart, "/"),
+			FormatKeys(m.app.Keys.Reaction.Laugh, "/"),
+			FormatKeys(m.app.Keys.Reaction.Surprised, "/"),
+			FormatKeys(m.app.Keys.Reaction.Sad, "/"),
+			FormatKeys(m.app.Keys.Reaction.Angry, "/"),
+			FormatKeys(m.app.Keys.Reaction.Close, "/"),
+		)
+		return fixedPanel(normalBorder,
+			lipgloss.NewStyle().Foreground(colYellow).Render(fitLine(text, inner)),
+			inner, 1,
 		)
 	}
 	text := fmt.Sprintf("%s | Notification (%s): %s", m.app.Status, FormatKeys(m.app.Keys.Normal.Notifications, "/"), m.app.NotificationMode)
@@ -4022,11 +4022,9 @@ func (m Model) renderStatusBar(w int) string {
 		text = "⏳ Loading older messages... | " + text
 	}
 	if m.app.VisualBellActive() {
-		return bellBorder.Width(w - 2).Height(1).Render(text)
+		return fixedPanel(bellBorder, fitLine(text, inner), inner, 1)
 	}
-	return normalBorder.Width(w - 2).Height(1).Render(
-		lipgloss.NewStyle().Foreground(colGreen).Render(text),
-	)
+	return fixedPanel(normalBorder, lipgloss.NewStyle().Foreground(colGreen).Render(fitLine(text, inner)), inner, 1)
 }
 
 // ---------------------------------------------------------------------------
@@ -4039,6 +4037,50 @@ func chatPanelWidth(total int) int {
 
 func msgPanelWidth(total int) int {
 	return total - chatPanelWidth(total)
+}
+
+// fitLine keeps s on one row and within w display columns.
+// A wrapped header makes the panel taller than the terminal; Bubble Tea then
+// drops rows from the top, which is what shoves the frame up inside a narrow
+// tmux pane.
+func fitLine(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return ansi.Truncate(s, w, "…")
+}
+
+// fitBlock caps a block at h rows of w columns. Lipgloss Height only pads;
+// it does not clip, so an over-long line would grow the border.
+func fitBlock(s string, w, h int) string {
+	if w <= 0 || h <= 0 {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) > h {
+		lines = lines[:h]
+	}
+	for i, line := range lines {
+		lines[i] = fitLine(line, w)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// fixedPanel draws content in a border whose outer size stays (w+2) by (h+2).
+func fixedPanel(style lipgloss.Style, content string, w, h int) string {
+	if w < 1 {
+		w = 1
+	}
+	if h < 1 {
+		h = 1
+	}
+	return style.Width(w).Height(h).Render(fitBlock(content, w, h))
+}
+
+func dimLine(s string, w int) string {
+	return lipgloss.NewStyle().Foreground(colDimGray).Render(fitLine(s, w))
 }
 
 func truncate(s string, maxLen int) string {
@@ -6577,7 +6619,13 @@ func (m Model) renderHelpPopup(w, h int) string {
 		scrollIndicator = fmt.Sprintf(" %s %d%%", dimStyle.Render(fmt.Sprintf("• Scroll %s •", slashKeys(m.app.Keys.Help.Next, m.app.Keys.Help.Prev))), percent)
 	}
 
-	title := lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render("Keyboard Shortcuts") + scrollIndicator
+	// Padding(1, 2) consumes 4 columns, so the title has to fit in what's left
+	// or it wraps onto a second row and the popup grows past the screen.
+	innerW := w - 4
+	if innerW < 1 {
+		innerW = 1
+	}
+	title := fitLine(lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render("Keyboard Shortcuts")+scrollIndicator, innerW)
 
 	var visibleContent []string
 	if totalContentLines > 0 {
@@ -6593,12 +6641,15 @@ func (m Model) renderHelpPopup(w, h int) string {
 	for len(visibleContent) < viewportH {
 		visibleContent = append(visibleContent, "")
 	}
+	for i := range visibleContent {
+		visibleContent[i] = fitLine(visibleContent[i], innerW)
+	}
 
 	var lines []string
 	lines = append(lines, title, "")
 	lines = append(lines, visibleContent...)
 
-	footer := dimStyle.Italic(true).Render("Press " + FormatKeys(m.app.Keys.Help.Close, " / ") + " to close")
+	footer := fitLine(dimStyle.Italic(true).Render("Press "+FormatKeys(m.app.Keys.Help.Close, " / ")+" to close"), innerW)
 	lines = append(lines, footer)
 
 	return lipgloss.NewStyle().

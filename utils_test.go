@@ -178,7 +178,6 @@ func TestHTMLToTextMentions(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(oldProfile)
 
-
 	// Helper functions for pointers
 	intPtr := func(v int) *int { return &v }
 	stringPtr := func(v string) *string { return &v }
@@ -508,18 +507,18 @@ func TestGetAttachmentSavedName(t *testing.T) {
 
 func TestGetMentionQuery(t *testing.T) {
 	tests := []struct {
-		name       string
-		val        string
-		cursor     int
-		ok         bool
-		wantStart  int
-		wantQuery  string
+		name      string
+		val       string
+		cursor    int
+		ok        bool
+		wantStart int
+		wantQuery string
 	}{
 		{
-			name:      "email at end of message",
-			val:       "PUB, ADV\u2014 Jamie Vernon, Publisher, TF: 800-282-0444 Ext. 223, E-mail jvernon@amsci.org",
-			cursor:    86,
-			ok:        false,
+			name:   "email at end of message",
+			val:    "PUB, ADV\u2014 Jamie Vernon, Publisher, TF: 800-282-0444 Ext. 223, E-mail jvernon@amsci.org",
+			cursor: 86,
+			ok:     false,
 		},
 		{
 			name:      "mention after space",
@@ -546,22 +545,22 @@ func TestGetMentionQuery(t *testing.T) {
 			wantQuery: "",
 		},
 		{
-			name:      "at sign embedded mid-word",
-			val:       "jvernon@amsci.org",
-			cursor:    16,
-			ok:        false,
+			name:   "at sign embedded mid-word",
+			val:    "jvernon@amsci.org",
+			cursor: 16,
+			ok:     false,
 		},
 		{
-			name:      "at sign preceded by punctuation",
-			val:       "(@jane",
-			cursor:    6,
-			ok:        false,
+			name:   "at sign preceded by punctuation",
+			val:    "(@jane",
+			cursor: 6,
+			ok:     false,
 		},
 		{
-			name:      "no at sign",
-			val:       "plain text",
-			cursor:    10,
-			ok:        false,
+			name:   "no at sign",
+			val:    "plain text",
+			cursor: 10,
+			ok:     false,
 		},
 		{
 			name:      "email then mention",
@@ -840,3 +839,32 @@ func TestReferenceAttachmentsFromMessage(t *testing.T) {
 	}
 }
 
+func TestFitLineStaysOnOneRow(t *testing.T) {
+	long := "Messages (j:compose, m:select, K/PgUp/J/PgDn:scroll, /:search, ?:help, Esc:sleep mode)"
+	got := fitLine(long, 40)
+	if strings.Contains(got, "\n") {
+		t.Fatalf("fitLine wrapped: %q", got)
+	}
+	if lipgloss.Width(got) > 40 {
+		t.Fatalf("fitLine width = %d, want <= 40", lipgloss.Width(got))
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("fitLine = %q, want ellipsis", got)
+	}
+	short := fitLine("Idle", 40)
+	if short != "Idle" {
+		t.Fatalf("fitLine short = %q", short)
+	}
+}
+
+func TestFixedPanelKeepsSizeWhenTitleOverflows(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	body := strings.Repeat("Messages header ", 20) + "\n" + strings.Repeat("line\n", 40)
+	out := fixedPanel(normalBorder, body, 36, 8)
+	if lipgloss.Width(out) != 38 {
+		t.Fatalf("panel width = %d, want 38", lipgloss.Width(out))
+	}
+	if lipgloss.Height(out) != 10 {
+		t.Fatalf("panel height = %d, want 10", lipgloss.Height(out))
+	}
+}
