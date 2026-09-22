@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.3.0] - 2026-09-22
+
+### Bug Fixes
+
+- *(edit)* **Preserve inline images and file attachments when editing messages** - ([b78ac03](https://github.com/nospor/teams-tui-go/commit/b78ac03c60fb9bca9a6aa27c149cc1292ef274f1))
+
+
+> The edit path used formatMessageBody, which sent [File: …] as plain text
+> and dropped &lt;img> tags. Reuse the send-side attachment/image formatting
+> on PATCH, stash original attachments when entering edit mode, and emit
+> [Image N] placeholders from HTMLToMarkdown.
+
+
+- *(upload)* **Reconstruct inline file attachment placement in message display** - ([e478fe7](https://github.com/nospor/teams-tui-go/commit/e478fe7c4be54f9c110106834a0fe6571af9f937))
+
+
+
+### Testing
+
+- **Replace real project data in test fixtures with generic placeholders** - ([c36530a](https://github.com/nospor/teams-tui-go/commit/c36530a9556c17872a0d287e1666cfc926268b01))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.2.9 [skip ci]** - ([969f60b](https://github.com/nospor/teams-tui-go/commit/969f60b3be1fe1999b16c716439f94a344aab7f9))
+
+
+
 ## [1.2.9] - 2026-09-11
 
 ### Features
