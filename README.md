@@ -605,5 +605,16 @@ go vet ./...
 
 See [LICENSE](LICENSE).
 
+## Acknowledgments
+
+Thanks to everyone who has improved this project:
+
+- [@carun](https://github.com/carun) — idle CPU and render performance ([#1](https://github.com/nospor/teams-tui-go/pull/1))
+- [@photuris](https://github.com/photuris) — single-tenant `TENANT_ID` authentication ([#2](https://github.com/nospor/teams-tui-go/pull/2))
+
+Ideas and implementations adapted from [@guibor](https://github.com/guibor)'s [teams-tui-go fork](https://github.com/guibor/teams-tui-go) — see their [FORK.md](https://github.com/guibor/teams-tui-go/blob/main/FORK.md) for the full list of fork additions.
+
+See also the [GitHub contributors graph](https://github.com/nospor/teams-tui-go/graphs/contributors).
+
 ## Thanks For Visiting
 Hope you liked it. Wanna **[buy Me a coffee](https://www.buymeacoffee.com/nospor)**?
