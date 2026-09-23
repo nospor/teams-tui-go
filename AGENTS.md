@@ -38,6 +38,7 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
 - **Name Abbreviation**: Group chat members shown as "FirstName LastInitial" (`abbreviateName()`)
 - **Filtering**: Current user is automatically filtered from all member lists by name match (not by ID — IDs vary per chat)
 - **HTMLToText**: Uses `golang.org/x/net/html` tokenizer for robust HTML-to-text conversion, handling `<img>`, `<attachment>`, `<emoji>`, block elements, HTML entities
+- **System events**: Graph `eventDetail` is decoded in `system_events.go`. `Message.GetPlainText()` / `SystemEventSummary()` turn meeting/call/member events into readable text; the UI sender for those rows is `Teams` via `SenderName()`. Do not special-case `"── [system event] ──"` in the UI layer.
 - **Read State**: `Chat` includes `Viewpoint` containing `LastMessageReadDateTime` from the server
 - **Silent errors**: `GetChatMembers()` returns empty slice on error; `MarkChatAsRead()` silently ignores all errors
 

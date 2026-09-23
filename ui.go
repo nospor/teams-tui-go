@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -691,17 +692,18 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 					}
 
 					// Trigger notification.
-					senderName := ""
-					if c.LastMessagePreview.From != nil && c.LastMessagePreview.From.User != nil && c.LastMessagePreview.From.User.DisplayName != nil {
-						senderName = *c.LastMessagePreview.From.User.DisplayName
-					}
+					senderName := c.LastMessagePreview.SenderName()
 
 					// Build a temporary Message object for notification.
 					tempMsg := Message{
 						ID:              newID,
 						CreatedDateTime: c.LastMessagePreview.CreatedDateTime,
+						MessageType:     c.LastMessagePreview.MessageType,
+						Subject:         c.LastMessagePreview.Subject,
+						Summary:         c.LastMessagePreview.Summary,
 						From:            c.LastMessagePreview.From,
 						Body:            c.LastMessagePreview.Body,
+						EventDetail:     c.LastMessagePreview.EventDetail,
 					}
 					m.notify(senderName, tempMsg)
 					m.promoteChat(c.ID)
@@ -1030,11 +1032,7 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 							} else {
 								// Trigger notification if blurred, and mark as unread locally
 								m.lastReadMsgID[chat.ID] = old
-								senderName := ""
-								if latestMsg.From != nil && latestMsg.From.User != nil && latestMsg.From.User.DisplayName != nil {
-									senderName = *latestMsg.From.User.DisplayName
-								}
-								m.notify(senderName, latestMsg)
+								m.notify(latestMsg.SenderName(), latestMsg)
 							}
 						}
 					}
@@ -1511,11 +1509,7 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 							m.lastReadMsgID[msg.ChannelID] = newest.ID
 						} else {
 							// Trigger notification
-							senderName := ""
-							if newest.From != nil && newest.From.User != nil && newest.From.User.DisplayName != nil {
-								senderName = *newest.From.User.DisplayName
-							}
-							m.notify(senderName, newest)
+							m.notify(newest.SenderName(), newest)
 						}
 					} else if !ok || m.lastMsgTime[msg.ChannelID].IsZero() {
 						// First time loading for channel in this session, mark as read
@@ -3791,10 +3785,7 @@ func (m Model) renderMessages(w, h int) string {
 			pendingScrollLine = len(lines)
 		}
 
-		sender := ""
-		if msg.From != nil && msg.From.User != nil && msg.From.User.DisplayName != nil {
-			sender = *msg.From.User.DisplayName
-		}
+		sender := msg.SenderName()
 
 		msgTime, _ := time.Parse(time.RFC3339Nano, msg.CreatedDateTime)
 		msgTime = msgTime.Local()
@@ -4132,13 +4123,10 @@ func (m Model) conversationNameMap() map[string]string {
 
 // messagePlainText renders a message body with chat-name resolution for forwarded quotes.
 func (m Model) messagePlainText(msg *Message) string {
+	if msg.IsSystemEvent() || msg.Body == nil || msg.Body.Content == nil {
+		return msg.GetPlainText()
+	}
 	msg.ProcessInlineImages()
-	if msg.Body == nil || msg.Body.Content == nil {
-		return ""
-	}
-	if *msg.Body.Content == "<systemEventMessage/>" {
-		return "── [system event] ──"
-	}
 	return HTMLToText(*msg.Body.Content, msg.Attachments, msg.Mentions, m.conversationNameMap())
 }
 
@@ -4211,6 +4199,10 @@ func messagesEqual(a, b []Message) bool {
 			contentB = *b[i].Body.Content
 		}
 		if contentA != contentB {
+			return false
+		}
+		if a[i].MessageType != b[i].MessageType || a[i].Summary != b[i].Summary ||
+			!reflect.DeepEqual(a[i].EventDetail, b[i].EventDetail) {
 			return false
 		}
 		if len(a[i].Reactions) != len(b[i].Reactions) {
@@ -5066,9 +5058,9 @@ func (m Model) renderSearchPopup(w, h int) string {
 			}
 
 			// Render sender + date
-			sender := "Unknown"
-			if item.Message.From != nil && item.Message.From.User != nil && item.Message.From.User.DisplayName != nil {
-				sender = *item.Message.From.User.DisplayName
+			sender := item.Message.SenderName()
+			if sender == "" {
+				sender = "Unknown"
 			}
 			msgTime, _ := time.Parse(time.RFC3339Nano, item.Message.CreatedDateTime)
 			msgTime = msgTime.Local()
@@ -6008,12 +6000,11 @@ func (m Model) renderMessagePopup(w, h int) string {
 	m.app.Messages[m.app.MessageSelectedIndex].ProcessInlineImages()
 	msg := m.app.Messages[m.app.MessageSelectedIndex]
 
-	sender := "Unknown"
-	if msg.From != nil && msg.From.User != nil && msg.From.User.DisplayName != nil {
-		sender = *msg.From.User.DisplayName
-		if m.app.CurrentUserName != nil && sender == *m.app.CurrentUserName {
-			sender = "Me"
-		}
+	sender := msg.SenderName()
+	if sender == "" {
+		sender = "Unknown"
+	} else if m.app.CurrentUserName != nil && sender == *m.app.CurrentUserName {
+		sender = "Me"
 	}
 
 	msgTime, _ := time.Parse(time.RFC3339Nano, msg.CreatedDateTime)

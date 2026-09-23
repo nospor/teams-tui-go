@@ -11,6 +11,7 @@ Authenticates via **OAuth2 Device Code Flow** (no browser redirect needed), fetc
 - 🔐 OAuth2 Device Code Flow — authenticate with your Microsoft account, no browser redirect required
 - 💬 List all your Teams chats (1:1, group, meetings) with computed display names
 - 📨 View messages in any chat with HTML-to-text rendering (images, attachments, emoji, **bold**, *italic*, ~~strikethrough~~, `code`, lists)
+- 📅 Readable system events — meeting started/ended, recordings, transcripts, member changes, and other Teams-generated events show as plain text instead of a generic placeholder
 - ❤️ Message Interactions — view and add reactions (Heart, Like, Laugh, etc.) to any message
 - 🔗 Clickable, Extractable & Openable URLs — links are clickable in supported terminals, can be extracted/copied via the `u` key, and opened in your browser/app via the `o` key
 - ✏️ Message Management — send, edit, and delete messages (includes multi-line support)

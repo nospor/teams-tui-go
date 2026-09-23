@@ -66,15 +66,17 @@ type ChatViewpoint struct {
 
 // Message represents a single message in a chat.
 type Message struct {
-	ID              string              `json:"id"`
-	CreatedDateTime string              `json:"createdDateTime"`
-	MessageType     string              `json:"messageType,omitempty"`
-	Subject         string              `json:"subject,omitempty"`
-	From            *MessageFrom        `json:"from,omitempty"`
-	Body            *MessageBody        `json:"body,omitempty"`
-	Attachments     []MessageAttachment `json:"attachments,omitempty"`
-	Reactions       []MessageReaction   `json:"reactions,omitempty"`
-	Mentions        []MessageMention    `json:"mentions,omitempty"`
+	ID                      string              `json:"id"`
+	CreatedDateTime         string              `json:"createdDateTime"`
+	MessageType             string              `json:"messageType,omitempty"`
+	Subject                 string              `json:"subject,omitempty"`
+	Summary                 string              `json:"summary,omitempty"`
+	From                    *MessageFrom        `json:"from,omitempty"`
+	Body                    *MessageBody        `json:"body,omitempty"`
+	EventDetail             *EventMessageDetail `json:"eventDetail,omitempty"`
+	Attachments             []MessageAttachment `json:"attachments,omitempty"`
+	Reactions               []MessageReaction   `json:"reactions,omitempty"`
+	Mentions                []MessageMention    `json:"mentions,omitempty"`
 	PlainTextCached         *string             `json:"-"`
 	NormalizedTextCached    *string             `json:"-"`
 	NormalizedSubjectCached *string             `json:"-"`
@@ -102,15 +104,15 @@ func (msg *Message) GetPlainText() string {
 	if msg.PlainTextCached != nil {
 		return *msg.PlainTextCached
 	}
+	if msg.IsSystemEvent() {
+		text := msg.SystemEventSummary()
+		msg.PlainTextCached = &text
+		return text
+	}
 	if msg.Body == nil || msg.Body.Content == nil {
 		empty := ""
 		msg.PlainTextCached = &empty
 		return empty
-	}
-	if *msg.Body.Content == "<systemEventMessage/>" {
-		text := "── [system event] ──"
-		msg.PlainTextCached = &text
-		return text
 	}
 	text := HTMLToText(*msg.Body.Content, msg.Attachments, msg.Mentions, nil)
 	msg.PlainTextCached = &text
@@ -199,7 +201,6 @@ func getAttachmentSavedName(att MessageAttachment, defaultName string) string {
 	return fmt.Sprintf("%s_%s%s", stem, idStr, ext)
 }
 
-
 func ExtractInlineImages(htmlContent string) []MessageAttachment {
 	if htmlContent == "" {
 		return nil
@@ -235,11 +236,11 @@ func ExtractInlineImages(htmlContent string) []MessageAttachment {
 						name += ".png"
 					}
 					contentType := "image/png"
-					
+
 					srcCopy := src
 					nameCopy := name
 					contentTypeCopy := contentType
-					
+
 					list = append(list, MessageAttachment{
 						ID:          fmt.Sprintf("inline-img-%d", imgCounter),
 						Name:        &nameCopy,
@@ -323,7 +324,9 @@ type MessageAttachment struct {
 
 // MessageFrom holds the sender information.
 type MessageFrom struct {
-	User *MessageUser `json:"user,omitempty"`
+	User        *MessageUser `json:"user,omitempty"`
+	Application *MessageUser `json:"application,omitempty"`
+	Device      *MessageUser `json:"device,omitempty"`
 }
 
 // MessageUser holds the sender display name and ID.
