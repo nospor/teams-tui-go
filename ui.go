@@ -1707,6 +1707,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if m.app.ChatActionPopupMode {
 		return m.handleChatActionPopupKey(msg)
 	}
+	if m.app.ArtifactPopupMode {
+		return m.handleConversationArtifactPopupKey(msg)
+	}
 	if m.app.PresencePopupMode {
 		return m.handlePresencePopupKey(msg)
 	}
@@ -3019,6 +3022,29 @@ func (m Model) renderView() string {
 			popupH = 12
 		}
 		modal := m.renderChatActionPopup(popupW, popupH)
+		result = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
+	} else if m.app.ArtifactPopupMode {
+		popupW := m.width * 70 / 100
+		popupH := m.height * 80 / 100
+		if popupW < 54 && m.width >= 56 {
+			popupW = 54
+		}
+		if popupH < 12 && m.height >= 14 {
+			popupH = 12
+		}
+		if maxW := m.width - 2; maxW > 0 && popupW > maxW {
+			popupW = maxW
+		}
+		if maxH := m.height - 2; maxH > 0 && popupH > maxH {
+			popupH = maxH
+		}
+		if popupW < 1 {
+			popupW = m.width
+		}
+		if popupH < 8 {
+			popupH = m.height
+		}
+		modal := m.renderConversationArtifactPopup(popupW, popupH)
 		result = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
 	} else if m.app.PresencePopupMode {
 		var popupW, popupH int
@@ -6386,6 +6412,7 @@ func (m Model) getHelpContentLines() []string {
 	del := m.app.Keys.DeleteConfirm
 	fp := m.app.Keys.FilePicker
 	actions := m.app.Keys.ChatActions
+	art := m.app.Keys.Artifacts
 	hk := func(b key.Binding) string { return FormatKeys(b, " / ") }
 
 	sections := []struct {
@@ -6494,7 +6521,14 @@ func (m Model) getHelpContentLines() []string {
 			{hk(actions.Compose), "Compose a message"},
 			{hk(actions.Favourite), "Toggle favourite"},
 			{hk(actions.Export), "Export the complete chat as Markdown"},
+			{hk(actions.Artifacts), "Choose a recording or transcript"},
 			{hk(actions.Close), "Close the popup"},
+		}},
+		{"Recordings and Transcripts (" + hk(actions.Artifacts) + ")", [][2]string{
+			{hk(art.Next) + " / " + hk(art.Prev), "Move between resources"},
+			{hk(art.Confirm) + " / " + hk(art.YankURL), "Copy the selected recording or transcript URL"},
+			{hk(art.OpenURL), "Open the selected recording or transcript"},
+			{hk(art.Close), "Close the popup"},
 		}},
 	}
 

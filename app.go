@@ -205,6 +205,11 @@ type App struct {
 	ChatActionSelectedIndex int
 	ExportDirectory         string // destination for Markdown chat exports
 
+	// ── Recordings / transcripts popup ───────────────────────────────────
+	ArtifactPopupMode     bool
+	ArtifactSelectedIndex int
+	Artifacts             []ConversationArtifact
+
 	// ── File Picker popup ────────────────────────────────────────────────
 	FilePickerPopupMode bool
 

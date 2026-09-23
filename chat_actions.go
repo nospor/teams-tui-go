@@ -16,6 +16,7 @@ const (
 	chatActionCompose   chatActionID = "compose"
 	chatActionFavourite chatActionID = "favourite"
 	chatActionExport    chatActionID = "export"
+	chatActionArtifacts chatActionID = "artifacts"
 )
 
 type chatAction struct {
@@ -30,6 +31,7 @@ func (m Model) configuredChatActions() []chatAction {
 		{Binding: k.Compose, Label: "Compose message", ID: chatActionCompose},
 		{Binding: k.Favourite, Label: "Toggle favourite", ID: chatActionFavourite},
 		{Binding: k.Export, Label: "Export complete Markdown transcript", ID: chatActionExport},
+		{Binding: k.Artifacts, Label: "Choose a recording or transcript", ID: chatActionArtifacts},
 	}
 	out := make([]chatAction, 0, len(all))
 	for _, action := range all {
@@ -109,6 +111,8 @@ func (m Model) executeChatAction(id chatActionID) (Model, tea.Cmd) {
 		return m.toggleFavourite(), nil
 	case chatActionExport:
 		return m.startChatExport()
+	case chatActionArtifacts:
+		return m.openConversationArtifacts()
 	default:
 		return m, nil
 	}

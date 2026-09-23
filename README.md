@@ -12,7 +12,7 @@ Authenticates via **OAuth2 Device Code Flow** (no browser redirect needed), fetc
 - 💬 List all your Teams chats (1:1, group, meetings) with computed display names
 - 📨 View messages in any chat with HTML-to-text rendering (images, attachments, emoji, **bold**, *italic*, ~~strikethrough~~, `code`, lists)
 - 📅 Readable system events — meeting started/ended, recordings, transcripts, member changes, and other Teams-generated events show as plain text instead of a generic placeholder
-- 📤 Chat actions & Markdown export — press `a` on a chat for compose, favourite, and a complete paginated Markdown transcript
+- 📤 Chat actions — press `a` on a chat for compose, favourite, Markdown export, and recordings/transcripts
 - ❤️ Message Interactions — view and add reactions (Heart, Like, Laugh, etc.) to any message
 - 🔗 Clickable, Extractable & Openable URLs — links are clickable in supported terminals, can be extracted/copied via the `u` key, and opened in your browser/app via the `o` key
 - ✏️ Message Management — send, edit, and delete messages (includes multi-line support)
@@ -569,6 +569,20 @@ Opened with `normal.actions` (`a`) on a selected chat. Export is only bound here
 | `compose` | `i` | Compose a message |
 | `favourite` | `f` | Toggle favourite |
 | `export` | `e` | Export the complete chat as Markdown |
+| `artifacts` | `t` | Choose a recording or transcript |
+| `close` | `esc`, `q` | Close the popup |
+
+### artifacts
+
+Opened from chat actions. Lists recordings and transcripts already loaded in this chat (not a full history fetch). Recordings prefer a direct Graph URL; transcripts fall back to the Teams event or chat link. Choosing an item copies that URL.
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `next` | `j`, `down` | Next resource |
+| `prev` | `k`, `up` | Previous resource |
+| `confirm` | `enter` | Copy the link |
+| `yank_url` | `y` | Copy the link |
+| `open_url` | `o` | Open in the browser |
 | `close` | `esc`, `q` | Close the popup |
 
 ---

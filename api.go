@@ -52,6 +52,7 @@ type Chat struct {
 	ID                 string         `json:"id"`
 	Topic              *string        `json:"topic,omitempty"`
 	ChatType           string         `json:"chatType"`
+	WebURL             string         `json:"webUrl,omitempty"`
 	LastUpdated        *string        `json:"lastUpdatedDateTime,omitempty"`
 	Viewpoint          *ChatViewpoint `json:"viewpoint,omitempty"`
 	LastMessagePreview *Message       `json:"lastMessagePreview,omitempty"`
@@ -71,6 +72,7 @@ type Message struct {
 	MessageType             string              `json:"messageType,omitempty"`
 	Subject                 string              `json:"subject,omitempty"`
 	Summary                 string              `json:"summary,omitempty"`
+	WebURL                  string              `json:"webUrl,omitempty"`
 	From                    *MessageFrom        `json:"from,omitempty"`
 	Body                    *MessageBody        `json:"body,omitempty"`
 	EventDetail             *EventMessageDetail `json:"eventDetail,omitempty"`

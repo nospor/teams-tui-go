@@ -119,9 +119,12 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
   - Handled by `handleHelpPopupKey` / `renderHelpPopup` in `ui.go`. Closed with `ESC`/`q`/`?`/`Enter`.
 - **Chat Actions Popup**:
   - Activated by `a` (`normal.actions`) on a selected chat (not channels). `ChatActionPopupMode` overlay; keys live in `app.Keys.ChatActions`.
-  - Actions: compose, favourite, export complete Markdown transcript. Export is bound only in this mode (`e` by default).
+  - Actions: compose, favourite, export complete Markdown transcript, choose a recording or transcript. Export and recordings/transcripts are bound only in this mode (`e` / `t` by default).
   - Labels must use `FormatKeys`. Close with `esc`/`q`; `j`/`k`/`enter` navigate and run.
   - Export follows every Graph next-link via `GetAllChatMessages` in `export.go`, writes under `export_directory` (default `~/Downloads`), and returns `MsgChatExported`.
+- **Recordings / transcripts popup**:
+  - Opened from chat actions (`t`). Collects `callRecording` / `callTranscript` events from loaded cache, history, and the current message list (`conversation_artifacts.go`).
+  - Recordings prefer `eventDetail.callRecordingUrl`; transcripts fall back to the message or chat `webUrl`. `Enter`/`y` copy the link; `o` opens it. The list is clipped to the popup height so the footer and border stay visible.
 - **External Editor Composing**:
   - Activated by `ctrl+g` in compose mode.
   - Temporarily saves the current textarea value to a temporary file, opens the configured editor (`ExternalEditor`), and updates the textarea value on success.

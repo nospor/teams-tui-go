@@ -31,6 +31,7 @@ type KeyMap struct {
 	Profile           ProfileKeys
 	FilePicker        FilePickerKeys
 	ChatActions       ChatActionsKeys
+	Artifacts         ArtifactsKeys
 }
 
 type NormalKeys struct {
@@ -109,6 +110,12 @@ type FilePickerKeys struct {
 type ChatActionsKeys struct {
 	Close, Next, Prev, Confirm key.Binding
 	Compose, Favourite, Export key.Binding
+	Artifacts                  key.Binding
+}
+
+type ArtifactsKeys struct {
+	Close, Next, Prev, Confirm key.Binding
+	YankURL, OpenURL           key.Binding
 }
 
 func bind(keys ...string) key.Binding {
@@ -262,6 +269,15 @@ func DefaultKeyMap() KeyMap {
 			Compose:   bind("i"),
 			Favourite: bind("f"),
 			Export:    bind("e"),
+			Artifacts: bind("t"),
+		},
+		Artifacts: ArtifactsKeys{
+			Close:   bind("esc", "q"),
+			Next:    bind("j", "down"),
+			Prev:    bind("k", "up"),
+			Confirm: bind("enter"),
+			YankURL: bind("y"),
+			OpenURL: bind("o"),
 		},
 	}
 }
@@ -476,6 +492,17 @@ func (k *KeyMap) slots(mode string) []keySlot {
 			{"compose", "", &c.Compose},
 			{"favourite", "", &c.Favourite},
 			{"export", "", &c.Export},
+			{"artifacts", "", &c.Artifacts},
+		}
+	case "artifacts":
+		c := &k.Artifacts
+		return []keySlot{
+			{"close", sharedClose, &c.Close},
+			{"next", sharedNext, &c.Next},
+			{"prev", sharedPrev, &c.Prev},
+			{"confirm", sharedConfirm, &c.Confirm},
+			{"yank_url", sharedYankURL, &c.YankURL},
+			{"open_url", sharedOpenURL, &c.OpenURL},
 		}
 	default:
 		return nil
@@ -486,7 +513,7 @@ var modeNames = []string{
 	"normal", "compose", "mention", "message", "message_view", "reaction",
 	"delete_confirm", "url_list", "search_input", "search_results",
 	"chat_search_input", "chat_search_results", "help", "presence", "profile",
-	"filepicker", "chat_actions",
+	"filepicker", "chat_actions", "artifacts",
 }
 
 var sharedNames = []string{
