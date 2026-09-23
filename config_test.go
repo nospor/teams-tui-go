@@ -77,7 +77,6 @@ func TestInitConfig(t *testing.T) {
 		t.Errorf("expected gitlab command to be nil, got %v", cfg.GitlabCommand)
 	}
 
-
 	// Case 2: Config exists but is missing some options (e.g. partial).
 	// We'll write a custom config with only ClientID and MessageLimit set, and others missing/nil.
 	customClientID := "custom-id-123"
@@ -134,6 +133,9 @@ func TestInitConfig(t *testing.T) {
 	}
 	if updatedCfg.BrowserCommand == nil || *updatedCfg.BrowserCommand != "xdg-open" {
 		t.Errorf("expected default browser command 'xdg-open', got %v", updatedCfg.BrowserCommand)
+	}
+	if updatedCfg.ExportDirectory == nil || *updatedCfg.ExportDirectory != "~/Downloads" {
+		t.Errorf("expected default export directory ~/Downloads, got %v", updatedCfg.ExportDirectory)
 	}
 	if updatedCfg.YoutrackCommand != nil {
 		t.Errorf("expected default youtrack command to be nil, got %v", updatedCfg.YoutrackCommand)
@@ -517,4 +519,3 @@ func TestResolveURLCommands(t *testing.T) {
 		t.Errorf("expected ResolveGitlabCommand to resolve to 'gitlab-cli', got %q", r)
 	}
 }
-

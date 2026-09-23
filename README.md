@@ -12,6 +12,7 @@ Authenticates via **OAuth2 Device Code Flow** (no browser redirect needed), fetc
 - 💬 List all your Teams chats (1:1, group, meetings) with computed display names
 - 📨 View messages in any chat with HTML-to-text rendering (images, attachments, emoji, **bold**, *italic*, ~~strikethrough~~, `code`, lists)
 - 📅 Readable system events — meeting started/ended, recordings, transcripts, member changes, and other Teams-generated events show as plain text instead of a generic placeholder
+- 📤 Chat actions & Markdown export — press `a` on a chat for compose, favourite, and a complete paginated Markdown transcript
 - ❤️ Message Interactions — view and add reactions (Heart, Like, Laugh, etc.) to any message
 - 🔗 Clickable, Extractable & Openable URLs — links are clickable in supported terminals, can be extracted/copied via the `u` key, and opened in your browser/app via the `o` key
 - ✏️ Message Management — send, edit, and delete messages (includes multi-line support)
@@ -139,6 +140,16 @@ Configure how many context messages (before and after each search match) to disp
   }
   ```
   - `search_context_limit`: The number of context messages before and after each match to include (default: 3).
+
+### Markdown Export Directory
+Complete chat transcripts (from the chat actions popup) are written here:
+
+  ```json
+  {
+    "export_directory": "~/Downloads"
+  }
+  ```
+  - `export_directory`: Destination folder for Markdown exports (default: `"~/Downloads"`). `~` is expanded to the home directory.
 
 ### Channel Message Refresh
 Configure background refresh rate for unhidden channels (in minutes) in `~/.config/teams-tui-go/config.json`:
@@ -389,6 +400,7 @@ If two actions in the same mode are given the same key, the one you set explicit
 | `sleep`         | `esc`         | Clear highlights, or enter sleep mode |
 | `messages`      | `m`           | Select a message                      |
 | `favourite`     | `f`           | Toggle favourite                      |
+| `actions`       | `a`           | Open chat actions popup               |
 | `presence`      | `p`           | Chat presence                         |
 | `channel_hide`  | `h`           | Hide or unhide a channel              |
 | `quit`          | `q`           | Quit (`ctrl+c` always quits too)      |
@@ -545,17 +557,32 @@ Only these keys are commands. Everything else is typed into the message.
 | `hidden` | `.` | Toggle hidden files |
 | `close` | `esc`, `q` | Cancel |
 
+### chat_actions
+
+Opened with `normal.actions` (`a`) on a selected chat. Export is only bound here, so `e` in the chat list and in message mode is unchanged.
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `next` | `j`, `down` | Next action |
+| `prev` | `k`, `up` | Previous action |
+| `confirm` | `enter` | Run the highlighted action |
+| `compose` | `i` | Compose a message |
+| `favourite` | `f` | Toggle favourite |
+| `export` | `e` | Export the complete chat as Markdown |
+| `close` | `esc`, `q` | Close the popup |
+
 ---
 
 ## File Locations
 
 | File                                          | Purpose                             |
 | --------------------------------------------- | ----------------------------------- |
-| `~/.config/teams-tui-go/config.json`           | Client ID, notification mode, limits, keybindings |
+| `~/.config/teams-tui-go/config.json`           | Client ID, notification mode, limits, keybindings, export directory |
 | `~/.config/teams-tui-go/favourites.json`       | Pinned/favourite chat IDs           |
 | `~/.cache/teams-tui-go/token.json`             | OAuth2 access + refresh tokens      |
 | `~/.cache/teams-tui-go/profile.json`           | Cached user profile                 |
 | `~/.cache/teams-tui-go/teams-tui-go.db`       | SQLite database caching messages    |
+| `~/Downloads/*.md`                             | Complete chat Markdown exports (default) |
 
 ---
 

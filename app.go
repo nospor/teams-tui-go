@@ -200,6 +200,11 @@ type App struct {
 	HelpPopupMode    bool
 	HelpScrollOffset int
 
+	// ── Chat actions popup ───────────────────────────────────────────────
+	ChatActionPopupMode     bool
+	ChatActionSelectedIndex int
+	ExportDirectory         string // destination for Markdown chat exports
+
 	// ── File Picker popup ────────────────────────────────────────────────
 	FilePickerPopupMode bool
 
@@ -256,6 +261,7 @@ func NewApp() *App {
 		AppStartTime:              time.Now(),
 		MentionCanceledStartIndex: -1,
 		Keys:                      DefaultKeyMap(),
+		ExportDirectory:           "~/Downloads",
 	}
 }
 

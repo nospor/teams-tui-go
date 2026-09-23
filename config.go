@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -180,6 +181,7 @@ type Config struct {
 	ImageViewer            *string `json:"image_viewer,omitempty"`
 	YoutrackCommand        *string `json:"youtrack_command,omitempty"`
 	GitlabCommand          *string `json:"gitlab_command,omitempty"`
+	ExportDirectory        *string `json:"export_directory,omitempty"`
 
 	// Keybindings overrides default keys. Omitted actions keep their defaults.
 	// See README for the action ids. Not written by InitConfig.
@@ -356,6 +358,11 @@ func InitConfig() {
 	if cfg.ImageViewer == nil {
 		v := ""
 		cfg.ImageViewer = &v
+		modified = true
+	}
+	if cfg.ExportDirectory == nil {
+		dir := "~/Downloads"
+		cfg.ExportDirectory = &dir
 		modified = true
 	}
 
@@ -554,6 +561,17 @@ func ResolveExternalEditor() string {
 		return vis
 	}
 	return "vim"
+}
+
+// ResolveExportDirectory returns the Markdown export directory:
+//  1. config.json -> export_directory
+//  2. Default ("~/Downloads")
+func ResolveExportDirectory() string {
+	cfg := LoadConfig()
+	if cfg != nil && cfg.ExportDirectory != nil && strings.TrimSpace(*cfg.ExportDirectory) != "" {
+		return strings.TrimSpace(*cfg.ExportDirectory)
+	}
+	return "~/Downloads"
 }
 
 // ResolveBrowserCommand returns the browser command, using precedence:

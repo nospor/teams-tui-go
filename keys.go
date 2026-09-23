@@ -30,12 +30,14 @@ type KeyMap struct {
 	Presence          PresenceKeys
 	Profile           ProfileKeys
 	FilePicker        FilePickerKeys
+	ChatActions       ChatActionsKeys
 }
 
 type NormalKeys struct {
 	Next, Prev, Section, PageDown, PageUp                   key.Binding
 	Notifications, Help, Compose, ChatSearch, Search        key.Binding
 	Sleep, Messages, Favourite, Presence, ChannelHide, Quit key.Binding
+	Actions                                                 key.Binding
 }
 
 type ComposeKeys struct {
@@ -104,6 +106,11 @@ type FilePickerKeys struct {
 	Sort, SortOrder, Hidden, Close  key.Binding
 }
 
+type ChatActionsKeys struct {
+	Close, Next, Prev, Confirm key.Binding
+	Compose, Favourite, Export key.Binding
+}
+
 func bind(keys ...string) key.Binding {
 	return key.NewBinding(key.WithKeys(keys...))
 }
@@ -128,6 +135,7 @@ func DefaultKeyMap() KeyMap {
 			Presence:      bind("p"),
 			ChannelHide:   bind("h"),
 			Quit:          bind("q"),
+			Actions:       bind("a"),
 		},
 		Compose: ComposeKeys{
 			Cancel:     bind("esc"),
@@ -246,6 +254,15 @@ func DefaultKeyMap() KeyMap {
 			Hidden:    bind("."),
 			Close:     bind("esc", "q"),
 		},
+		ChatActions: ChatActionsKeys{
+			Close:     bind("esc", "q"),
+			Next:      bind("j", "down"),
+			Prev:      bind("k", "up"),
+			Confirm:   bind("enter"),
+			Compose:   bind("i"),
+			Favourite: bind("f"),
+			Export:    bind("e"),
+		},
 	}
 }
 
@@ -300,6 +317,7 @@ func (k *KeyMap) slots(mode string) []keySlot {
 			{"favourite", "", &n.Favourite},
 			{"presence", "", &n.Presence},
 			{"channel_hide", "", &n.ChannelHide},
+			{"actions", "", &n.Actions},
 		}
 	case "compose":
 		c := &k.Compose
@@ -448,6 +466,17 @@ func (k *KeyMap) slots(mode string) []keySlot {
 			{"sort_order", "", &c.SortOrder},
 			{"hidden", "", &c.Hidden},
 		}
+	case "chat_actions":
+		c := &k.ChatActions
+		return []keySlot{
+			{"close", sharedClose, &c.Close},
+			{"next", sharedNext, &c.Next},
+			{"prev", sharedPrev, &c.Prev},
+			{"confirm", sharedConfirm, &c.Confirm},
+			{"compose", "", &c.Compose},
+			{"favourite", "", &c.Favourite},
+			{"export", "", &c.Export},
+		}
 	default:
 		return nil
 	}
@@ -457,7 +486,7 @@ var modeNames = []string{
 	"normal", "compose", "mention", "message", "message_view", "reaction",
 	"delete_confirm", "url_list", "search_input", "search_results",
 	"chat_search_input", "chat_search_results", "help", "presence", "profile",
-	"filepicker",
+	"filepicker", "chat_actions",
 }
 
 var sharedNames = []string{

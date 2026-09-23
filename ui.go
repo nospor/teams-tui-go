@@ -173,6 +173,13 @@ type MsgPreviewFinished struct {
 	Err error
 }
 
+// MsgChatExported is sent when a full-conversation Markdown export finishes.
+type MsgChatExported struct {
+	Path  string
+	Count int
+	Err   error
+}
+
 // MsgTeamsChannelsLoaded is sent when the joined teams and their channels have been fetched.
 type MsgTeamsChannelsLoaded struct {
 	Teams []TeamWithChannels
@@ -1375,6 +1382,13 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		}
 
+	case MsgChatExported:
+		if msg.Err == nil {
+			m.app.SetStatus(fmt.Sprintf("Exported %d messages to %s", msg.Count, msg.Path), 8*time.Second)
+		} else {
+			m.app.SetStatus("Export failed: "+msg.Err.Error(), 6*time.Second)
+		}
+
 	// ── Images opened with image viewer ─────────────────────────
 	case MsgImagesOpened:
 		if msg.Err == nil {
@@ -1690,6 +1704,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if m.app.HelpPopupMode {
 		return m.handleHelpPopupKey(msg)
 	}
+	if m.app.ChatActionPopupMode {
+		return m.handleChatActionPopupKey(msg)
+	}
 	if m.app.PresencePopupMode {
 		return m.handlePresencePopupKey(msg)
 	}
@@ -1815,14 +1832,11 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.app.HelpPopupMode = true
 		m.app.HelpScrollOffset = 0
 
+	case pressed(msg, k.Actions):
+		return m.openChatActionPopup(), nil
+
 	case pressed(msg, k.Compose):
-		if m.app.SelectedIndex < 0 && m.channelSelectedIndex < 0 {
-			break
-		}
-		m.app.InputMode = true
-		m.app.InputBuffer = ""
-		m.textarea.Reset()
-		return m, m.textarea.Focus()
+		return m.startCompose()
 
 	case pressed(msg, k.ChatSearch):
 		m.app.UserSearchPopupMode = true
@@ -1940,29 +1954,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 
 	case pressed(msg, k.Favourite):
-		// Toggle favourite on the selected chat — no-op in channel mode.
-		if m.channelSelectedIndex >= 0 {
-			break
-		}
-		if chat := m.app.GetSelectedChat(); chat != nil {
-			if m.favourites[chat.ID] {
-				delete(m.favourites, chat.ID)
-				m.app.SetStatus("★ Removed from favourites: "+*chat.CachedDisplayName, 3*time.Second)
-			} else {
-				m.favourites[chat.ID] = true
-				m.app.SetStatus("★ Added to favourites: "+*chat.CachedDisplayName, 3*time.Second)
-			}
-			// Persist and rebuild the list to reorder immediately.
-			_ = SaveFavourites(m.favourites)
-			m = m.rebuildChatList()
-			// Restore selection to the toggled chat.
-			for i, c := range m.app.Chats {
-				if c.ID == chat.ID {
-					m.app.SelectedIndex = i
-					break
-				}
-			}
-		}
+		m = m.toggleFavourite()
 
 	case pressed(msg, k.Presence):
 		// Show presence popup for chats (requires presence_enabled feature).
@@ -3017,6 +3009,17 @@ func (m Model) renderView() string {
 		}
 		modal := m.renderHelpPopup(popupW, popupH)
 		result = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
+	} else if m.app.ChatActionPopupMode {
+		popupW := m.width * 55 / 100
+		popupH := m.height * 50 / 100
+		if popupW < 48 {
+			popupW = 48
+		}
+		if popupH < 12 {
+			popupH = 12
+		}
+		modal := m.renderChatActionPopup(popupW, popupH)
+		result = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
 	} else if m.app.PresencePopupMode {
 		var popupW, popupH int
 		if m.app.PresenceChatMode {
@@ -3134,8 +3137,9 @@ func (m Model) renderRightPanel(w, h int) string {
 
 	if !m.app.InputMode {
 		nk := m.app.Keys.Normal
-		title := fmt.Sprintf("Messages (%s:compose, %s:select, %s:scroll, %s:search, %s:help, %s:sleep mode)",
+		title := fmt.Sprintf("Messages (%s:compose, %s:actions, %s:select, %s:scroll, %s:search, %s:help, %s:sleep mode)",
 			FormatKeys(nk.Compose, "/"),
+			FormatKeys(nk.Actions, "/"),
 			FormatKeys(nk.Messages, "/"),
 			slashKeys(nk.PageUp, nk.PageDown),
 			FormatKeys(nk.Search, "/"),
@@ -3486,18 +3490,20 @@ func (m Model) activeConversationID() string {
 
 func (m Model) renderChatList(w, h int) string {
 	nk := m.app.Keys.Normal
-	titleText := fmt.Sprintf("Chats (%s: nav, %s: find, %s: ★ fav, %s: quit)",
+	titleText := fmt.Sprintf("Chats (%s: nav, %s: find, %s: ★ fav, %s: actions, %s: quit)",
 		slashKeys(nk.Next, nk.Prev),
 		FormatKeys(nk.ChatSearch, "/"),
 		FormatKeys(nk.Favourite, "/"),
+		FormatKeys(nk.Actions, "/"),
 		FormatKeys(nk.Quit, "/"),
 	)
 	if m.app.Features.TeamsChannels {
-		titleText = fmt.Sprintf("Chats (%s: nav, %s: switch, %s: find, %s: ★ fav, %s: quit)",
+		titleText = fmt.Sprintf("Chats (%s: nav, %s: switch, %s: find, %s: ★ fav, %s: actions, %s: quit)",
 			slashKeys(nk.Next, nk.Prev),
 			FormatKeys(nk.Section, "/"),
 			FormatKeys(nk.ChatSearch, "/"),
 			FormatKeys(nk.Favourite, "/"),
+			FormatKeys(nk.Actions, "/"),
 			FormatKeys(nk.Quit, "/"),
 		)
 	}
@@ -6379,6 +6385,7 @@ func (m Model) getHelpContentLines() []string {
 	react := m.app.Keys.Reaction
 	del := m.app.Keys.DeleteConfirm
 	fp := m.app.Keys.FilePicker
+	actions := m.app.Keys.ChatActions
 	hk := func(b key.Binding) string { return FormatKeys(b, " / ") }
 
 	sections := []struct {
@@ -6394,6 +6401,7 @@ func (m Model) getHelpContentLines() []string {
 			{hk(n.ChatSearch), "Open chat search / open chat"},
 			{hk(n.Search), "Search message history"},
 			{hk(n.Favourite), "Toggle favourite (chats only)"},
+			{hk(n.Actions), "Open chat actions (compose, favourite, export)"},
 			{hk(n.ChannelHide), "Toggle hide/unhide channel (channels only)"},
 			{hk(n.Presence), "Presence status of chat participants (chats only, feature: presence_enabled)"},
 			{hk(n.Notifications), "Cycle notification mode"},
@@ -6479,6 +6487,14 @@ func (m Model) getHelpContentLines() []string {
 			{hk(fp.SortOrder), "Change sort order"},
 			{hk(fp.Hidden), "Toggle hidden files"},
 			{hk(fp.Close), "Cancel"},
+		}},
+		{"Chat Actions (" + hk(n.Actions) + ")", [][2]string{
+			{hk(actions.Next) + " / " + hk(actions.Prev), "Move between actions"},
+			{hk(actions.Confirm), "Run the highlighted action"},
+			{hk(actions.Compose), "Compose a message"},
+			{hk(actions.Favourite), "Toggle favourite"},
+			{hk(actions.Export), "Export the complete chat as Markdown"},
+			{hk(actions.Close), "Close the popup"},
 		}},
 	}
 

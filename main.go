@@ -375,6 +375,27 @@ func downloadFileCmd(clientID, fileURL, destPath string, openAfterDownload bool)
 	}
 }
 
+// exportChatMarkdownCmd fetches every page for chat and writes a Markdown transcript.
+func exportChatMarkdownCmd(clientID string, chat Chat, directory string) tea.Cmd {
+	return func() tea.Msg {
+		path, count, err := exportCompleteChatMarkdown(clientID, chat, directory)
+		return MsgChatExported{Path: path, Count: count, Err: err}
+	}
+}
+
+func exportCompleteChatMarkdown(clientID string, chat Chat, directory string) (string, int, error) {
+	token, err := GetValidTokenSilent(clientID)
+	if err != nil {
+		return "", 0, err
+	}
+	messages, err := GetAllChatMessages(token, chat.ID)
+	if err != nil {
+		return "", 0, err
+	}
+	path, err := ExportChatMarkdown(directory, chat, messages, time.Now())
+	return path, len(messages), err
+}
+
 // downloadAndOpenImagesCmd downloads all image attachments in a message and opens
 // them together with the configured image viewer. selectedAtt is the attachment the
 // user pressed Enter on; allAtts is the full list of viewable attachments for that
@@ -778,6 +799,7 @@ func main() {
 	app.ImageViewer = ResolveImageViewer()
 	app.YoutrackCommand = ResolveYoutrackCommand()
 	app.GitlabCommand = ResolveGitlabCommand()
+	app.ExportDirectory = ResolveExportDirectory()
 	if cfg := LoadConfig(); cfg != nil {
 		if cfg.NotificationMode != nil {
 			app.NotificationMode = *cfg.NotificationMode

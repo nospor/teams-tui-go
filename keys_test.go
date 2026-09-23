@@ -86,6 +86,31 @@ func TestFormatKeysUsesResolvedBindings(t *testing.T) {
 	}
 }
 
+func TestResolveKeyMapChatActionsOverlay(t *testing.T) {
+	km, warns := ResolveKeyMap([]byte(`{
+		"normal": {"actions": ["A"]},
+		"chat_actions": {"export": ["x"], "compose": ["c"]}
+	}`))
+	if len(warns) != 0 {
+		t.Fatalf("unexpected warnings: %v", warns)
+	}
+	if got := km.Normal.Actions.Keys(); !sameKeys(got, []string{"A"}) {
+		t.Fatalf("normal.actions = %v", got)
+	}
+	if got := km.ChatActions.Export.Keys(); !sameKeys(got, []string{"x"}) {
+		t.Fatalf("chat_actions.export = %v", got)
+	}
+	if got := km.ChatActions.Compose.Keys(); !sameKeys(got, []string{"c"}) {
+		t.Fatalf("chat_actions.compose = %v", got)
+	}
+	if got := km.ChatActions.Favourite.Keys(); !sameKeys(got, []string{"f"}) {
+		t.Fatalf("favourite should keep default, got %v", got)
+	}
+	if got := km.Message.Edit.Keys(); !sameKeys(got, []string{"e"}) {
+		t.Fatalf("message.edit should stay e, got %v", got)
+	}
+}
+
 func sameKeys(got, want []string) bool {
 	if len(got) != len(want) {
 		return false
