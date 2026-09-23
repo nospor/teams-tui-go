@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.2] - 2026-09-23
+
+### Bug Fixes
+
+- *(attachments)* **Restore clipboard image paste and inline file display order** - ([a1069d6](https://github.com/nospor/teams-tui-go/commit/a1069d61ef77d8bf6e3b6800d03e6d5b99c47d02))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.3.1 [skip ci]** - ([3cc93a5](https://github.com/nospor/teams-tui-go/commit/3cc93a54aae149e2d1686a82d4077ab95a38a2ef))
+
+
+
 ## [1.3.1] - 2026-09-22
 
 ### Features
