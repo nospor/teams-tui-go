@@ -41,6 +41,7 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
 - **System events**: Graph `eventDetail` is decoded in `system_events.go`. `Message.GetPlainText()` / `SystemEventSummary()` turn meeting/call/member events into readable text; the UI sender for those rows is `Teams` via `SenderName()`. Do not special-case `"── [system event] ──"` in the UI layer.
 - **Read State**: `Chat` includes `Viewpoint` containing `LastMessageReadDateTime` from the server
 - **Silent errors**: `GetChatMembers()` returns empty slice on error; `MarkChatAsRead()` silently ignores all errors
+- **Downloads**: `DownloadFile` streams to a temp file in the destination directory and renames only after a complete copy, so an interrupted transfer does not replace a valid file or leave a cached partial
 
 ### Application State (`app.go`)
 - `App` struct holds all runtime state: chats, messages, selection, input mode, notification mode, etc.
