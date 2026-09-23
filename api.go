@@ -2091,6 +2091,7 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 	var tagAddedNewline bool
 	imgCounter := 0
 	var refFileNames []string
+	var blockContentDepth int // >0 while inside <p>/<div> body content
 
 	// ---- existing state ----
 	var inPre bool
@@ -2249,7 +2250,7 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 					}
 				}
 				orangeText := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8700")).Render(imgName)
-				content := "🖼️  " + orangeText
+				content := "🖼️ " + orangeText
 				if inLink {
 					content = fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", currentLinkURL, content)
 				}
@@ -2287,7 +2288,12 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 							if att.Name != nil && *att.Name != "" {
 								name = *att.Name
 							}
-							refFileNames = append(refFileNames, name)
+							if blockContentDepth > 0 {
+								sb.WriteString(formatInlineFileAttachment(name))
+								lastChar = 't'
+							} else {
+								refFileNames = append(refFileNames, name)
+							}
 							continue
 						}
 					}
@@ -2318,7 +2324,9 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 				tagAddedNewline = true
 
 			// Block-level elements — closing tag emits newline.
-			case "p", "div", "pre":
+			case "p", "div":
+				blockContentDepth++
+			case "pre":
 				// Do nothing — closing tag will emit newline.
 
 			case "a":
@@ -2362,7 +2370,16 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 				}
 				tagAddedNewline = true
 
-			case "p", "div", "pre":
+			case "p", "div":
+				if blockContentDepth > 0 {
+					blockContentDepth--
+				}
+				if lastChar != '\n' && sb.Len() > 0 {
+					sb.WriteRune('\n')
+					lastChar = '\n'
+				}
+				tagAddedNewline = true
+			case "pre":
 				if lastChar != '\n' && sb.Len() > 0 {
 					sb.WriteRune('\n')
 					lastChar = '\n'
@@ -2451,16 +2468,18 @@ func HTMLToText(htmlContent string, attachments []MessageAttachment, mentions []
 	return result
 }
 
+func formatInlineFileAttachment(name string) string {
+	orangeText := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8700")).Render(name)
+	return "📎 " + orangeText
+}
+
 // restoreInlineFileAttachmentsDisplay reinserts styled file attachment markers at double-space
 // gaps left when Teams strips inline <attachment> tags from the message body.
 func restoreInlineFileAttachmentsDisplay(text string, fileNames []string) string {
 	if len(fileNames) == 0 {
 		return text
 	}
-	fileStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8700"))
-	formatFile := func(name string) string {
-		return "📎 " + fileStyle.Render(name)
-	}
+	formatFile := formatInlineFileAttachment
 
 	gapRe := regexp.MustCompile(`\s{2,}`)
 	gapLocs := gapRe.FindAllStringIndex(text, -1)

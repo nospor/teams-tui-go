@@ -172,6 +172,27 @@ func TestHTMLToMarkdownReferenceAttachment(t *testing.T) {
 	}
 }
 
+func TestHTMLToMarkdownMixedInlineImagesAndFileAttachment(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+	refType := "reference"
+	attachments := []MessageAttachment{
+		{ID: "id-1", Name: strPtr("CustomFiles2026.odt"), ContentType: &refType},
+	}
+	html := `<p>sorki, one more test on image <img src="https://example.com/hostedContents/1/$value" /> and on file <attachment id="id-1"></attachment> and again on image <img src="https://example.com/hostedContents/2/$value" /> test</p>`
+	got := HTMLToMarkdown(html, attachments)
+
+	idxImg1 := strings.Index(got, "[Image 1]")
+	idxFile := strings.Index(got, "[File: CustomFiles2026.odt]")
+	idxAndAgain := strings.Index(got, "and again")
+	idxImg2 := strings.Index(got, "[Image 2]")
+	if idxImg1 < 0 || idxFile < 0 || idxAndAgain < 0 || idxImg2 < 0 {
+		t.Fatalf("expected images and file placeholder, got %q", got)
+	}
+	if !(idxImg1 < idxFile && idxFile < idxAndAgain && idxAndAgain < idxImg2) {
+		t.Fatalf("expected image, file, image order, got %q", got)
+	}
+}
+
 func TestRestoreFilePlaceholdersInText(t *testing.T) {
 	got := restoreFilePlaceholdersInText("one  more  test", []string{"a.docx", "b.xlsx"})
 	want := "one [File: a.docx] more [File: b.xlsx] test"

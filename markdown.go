@@ -246,6 +246,7 @@ func HTMLToMarkdown(htmlContent string, attachments []MessageAttachment) string 
 		attByID[strings.ToLower(a.ID)] = a
 	}
 	var refFileNames []string
+	var blockContentDepth int
 	imgCounter := 0
 	tokenizer := golanghtml.NewTokenizer(strings.NewReader(htmlContent))
 	var sb strings.Builder
@@ -373,11 +374,15 @@ func HTMLToMarkdown(htmlContent string, attachments []MessageAttachment) string 
 						if att.Name != nil && *att.Name != "" {
 							name = *att.Name
 						}
-						refFileNames = append(refFileNames, name)
+						if blockContentDepth > 0 {
+							write(fmt.Sprintf("[File: %s]", name))
+						} else {
+							refFileNames = append(refFileNames, name)
+						}
 					}
 				}
 			case "p", "div":
-				// handled on close
+				blockContentDepth++
 			}
 
 		case golanghtml.EndTagToken:
@@ -423,6 +428,9 @@ func HTMLToMarkdown(htmlContent string, attachments []MessageAttachment) string 
 				ensureNewline()
 				tagAddedNewline = true
 			case "p", "div":
+				if blockContentDepth > 0 {
+					blockContentDepth--
+				}
 				ensureNewline()
 				tagAddedNewline = true
 			}

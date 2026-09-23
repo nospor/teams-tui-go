@@ -642,6 +642,30 @@ func TestHTMLToTextForwardedMessageReference(t *testing.T) {
 	}
 }
 
+func TestHTMLToTextMixedInlineImagesAndFileAttachment(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+	refType := "reference"
+	attachments := []MessageAttachment{
+		{ID: "id-1", Name: strPtr("CustomFiles2026.odt"), ContentType: &refType},
+	}
+	html := `<p>sorki, one more test on image <img src="https://example.com/hostedContents/1/$value" /> and on file <attachment id="id-1"></attachment> and again on image <img src="https://example.com/hostedContents/2/$value" /> test</p>`
+	text := stripANSI(HTMLToText(html, attachments, nil, nil))
+
+	idxImg1 := strings.Index(text, "inline-image-1")
+	idxFile := strings.Index(text, "CustomFiles2026.odt")
+	idxAndAgain := strings.Index(text, "and again")
+	idxImg2 := strings.Index(text, "inline-image-2")
+	if idxImg1 < 0 || idxFile < 0 || idxAndAgain < 0 || idxImg2 < 0 {
+		t.Fatalf("expected images and file in output, got %q", text)
+	}
+	if !(idxImg1 < idxFile && idxFile < idxAndAgain && idxAndAgain < idxImg2) {
+		t.Fatalf("expected image, file, image order, got %q", text)
+	}
+	if strings.Count(text, "CustomFiles2026.odt") != 1 {
+		t.Fatalf("expected file once, got %q", text)
+	}
+}
+
 func TestHTMLToTextInlineFileAttachmentRestore(t *testing.T) {
 	strPtr := func(s string) *string { return &s }
 	refType := "reference"
@@ -768,6 +792,31 @@ func TestFormatMessageBodyWithImagesAndFilesUnreferencedAppended(t *testing.T) {
 	html := body["content"].(string)
 	if !strings.Contains(html, `<attachment id="id-orphan"></attachment>`) {
 		t.Fatalf("expected unreferenced file appended at end, got %q", html)
+	}
+}
+
+func TestFormatMessageBodyWithImagesAndFilesPastedImage(t *testing.T) {
+	images := []PastedImage{
+		{Bytes: []byte("fake-png"), ContentType: "image/png"},
+	}
+
+	body, _, hosted, _ := formatMessageBodyWithImagesAndFiles(
+		"test [Image 1]",
+		nil, images, nil, nil, false,
+	)
+
+	html := body["content"].(string)
+	if strings.Contains(html, "[Image 1]") {
+		t.Fatalf("placeholder should be replaced, got %q", html)
+	}
+	if !strings.Contains(html, `<img src="../hostedContents/1/$value" />`) {
+		t.Fatalf("expected hostedContents img tag, got %q", html)
+	}
+	if len(hosted) != 1 {
+		t.Fatalf("expected 1 hosted content, got %d", len(hosted))
+	}
+	if hosted[0]["@microsoft.graph.temporaryId"] != "1" {
+		t.Fatalf("expected temporaryId 1, got %v", hosted[0]["@microsoft.graph.temporaryId"])
 	}
 }
 

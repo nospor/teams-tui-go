@@ -2189,7 +2189,7 @@ func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				Bytes:       imgBytes,
 				ContentType: contentType,
 			})
-			placeholder := fmt.Sprintf("[Image %d]", len(m.app.EditingInlineImageURLs)+len(m.app.ComposedImages)+1)
+			placeholder := fmt.Sprintf("[Image %d]", len(m.app.EditingInlineImageURLs)+len(m.app.ComposedImages))
 			m.textarea.InsertString(placeholder)
 			m.app.InputBuffer = m.textarea.Value()
 			m.app.SetStatus("Image pasted from clipboard", 3*time.Second)
