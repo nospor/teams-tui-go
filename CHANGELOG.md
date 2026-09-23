@@ -1,5 +1,48 @@
 # Changelog
 
+## [1.3.3] - 2026-09-23
+
+### Features
+
+- *(search)* **Match chats with component queries and a session inventory** - ([a62a277](https://github.com/nospor/teams-tui-go/commit/a62a2773650b0c31f4511fbbe456db98de6b7dcd))
+
+
+- *(chats)* **Pick recordings and transcripts from the actions popup** - ([318ac01](https://github.com/nospor/teams-tui-go/commit/318ac011bccb30ca4ac667fe17a48b0ec91e39b3))
+
+
+- *(chats)* **Add actions popup and complete Markdown export** - ([0d767ab](https://github.com/nospor/teams-tui-go/commit/0d767abb342a594b31f68aa090d5dfedef357737))
+
+
+- *(messages)* **Show readable summaries for Teams system events** - ([0b46c7c](https://github.com/nospor/teams-tui-go/commit/0b46c7c1a47833f12c5fbb2978aa24186412d5e3))
+
+
+> Use Graph eventDetail so meeting, recording, transcript, and member
+> events render as plain text instead of a generic placeholder.
+
+
+
+### Bug Fixes
+
+- *(downloads)* **Publish attachments only after a complete transfer** - ([fe3fcd0](https://github.com/nospor/teams-tui-go/commit/fe3fcd0425bd34f9cd1ef6df3d42bb39835fc1eb))
+
+
+> Stream to a temp file and rename on success so an interrupted download
+> cannot replace a valid file or leave a cached partial.
+
+
+
+### Documentation
+
+- *(readme)* **Add acknowledgments for contributors and guibor fork** - ([7765287](https://github.com/nospor/teams-tui-go/commit/77652875c2fa556260a8896e2273a96975614d0d))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.3.2 [skip ci]** - ([a4b1fa3](https://github.com/nospor/teams-tui-go/commit/a4b1fa3345bf191fd8b2f6fb919692ee31eef87f))
+
+
+
 ## [1.3.2] - 2026-09-23
 
 ### Bug Fixes
