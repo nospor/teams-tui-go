@@ -22,8 +22,8 @@ Authenticates via **OAuth2 Device Code Flow** (no browser redirect needed), fetc
 - 🔔 Notification modes: None / Console (BEL + visual bell) / System (desktop) / Both
 - 🔄 Smart Background Polling & Sleep Mode — active chat messages poll every 3 s and chat list updates every 15 s. Polling auto-pauses when the terminal window is unfocused (blurred) or when you manually enter sleep mode via the `Esc` key.
 - 😊 Emoticon Auto-replacement — popular text emoticons (like `:)`, `:D`, `<3`) are automatically converted to Unicode emojis
-- 🔍 Search History — search messages in any chat, recursively loading and indexing all conversation history in the background
-- 🔍 Chat Search & Open — filter locally loaded chats or open/start a 1:1 chat directly by entering a UPN/email (bypassing directory search)
+- 🔍 Search History — search messages in the current chat (`/`) with literal/regexp components, recursively loading history in the background
+- 🔍 Chat Search & Open — press `c` to search chat titles, participants, and loaded messages, including chats outside the sidebar limit; open/start a 1:1 chat by entering a UPN/email
 - ⭐ Favourites — pin any chat to the top of the sidebar with `f`; favourites are sorted alphabetically and stay anchored regardless of activity
 - ❓ Help Popup — press `?` at any time to show a keyboard shortcuts reference with optional feature status
 
@@ -140,6 +140,24 @@ Configure how many context messages (before and after each search match) to disp
   }
   ```
   - `search_context_limit`: The number of context messages before and after each match to include (default: 3).
+
+### Search Queries
+
+`c` searches chat titles, participants, already-loaded messages, and (once per session) every paginated Graph chat. That inventory is not added to the sidebar until you open a result. `/` uses the same grammar inside the current conversation while it continues to fetch older history pages.
+
+Each space-separated component may match literally or as a regexp. Every component is required, and order does not matter. There is no character-subsequence matching: `q p` and `q.*p` match “Quarterly Planning”; `qp` does not. Quote a phrase, prefix a term with `-` to exclude it, and use these fields:
+
+| Syntax | Meaning |
+| --- | --- |
+| `from:alice` | Sender name |
+| `in:"Product planning"` | Conversation name |
+| `is:unread`, `is:read`, `is:favorite` | Chat state |
+| `type:direct`, `type:group`, `type:meeting` | Chat type |
+| `type:message`, `type:event`, `type:channel` | Result type |
+| `has:file`, `has:image`, `has:link` | Message/latest-preview content |
+| `after:2026-08-01`, `before:2026-08-06` | Local message/activity date |
+
+For example, `quarter plan from:alice is:unread -has:file` matches both free components in unread conversations while excluding file-bearing messages. An exact `user@domain` still opens or creates a 1:1 chat when nothing else matches.
 
 ### Markdown Export Directory
 Complete chat transcripts (from the chat actions popup) are written here:
@@ -395,7 +413,7 @@ If two actions in the same mode are given the same key, the one you set explicit
 | `notifications` | `n`           | Cycle notification mode               |
 | `help`          | `?`           | Open help                             |
 | `compose`       | `i`           | Compose                               |
-| `chat_search`   | `c`           | Find or start a chat                  |
+| `chat_search`   | `c`           | Search chats and loaded messages      |
 | `search`        | `/`           | Search history                        |
 | `sleep`         | `esc`         | Clear highlights, or enter sleep mode |
 | `messages`      | `m`           | Select a message                      |
@@ -517,7 +535,7 @@ Only these keys are commands. Everything else is typed into the message.
 | --- | --- | --- |
 | `cancel` | `esc` | Leave the field |
 | `focus_results` | `down`, `up`, `tab` | Move into the result list |
-| `submit` | `enter` | Open by email, or focus results |
+| `submit` | `enter` | Open the first match, or a typed email |
 
 ### chat_search_results
 
@@ -527,7 +545,7 @@ Only these keys are commands. Everything else is typed into the message.
 | `next` | `j`, `down` | Next result |
 | `prev` | `k`, `up` | Previous result |
 | `edit_query` | `/` | Focus the field |
-| `open` | `enter` | Open the selected chat |
+| `open` | `enter` | Open the selected chat or message |
 
 ### help, presence, profile
 

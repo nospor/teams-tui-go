@@ -521,6 +521,17 @@ func downloadAndOpenImagesCmd(clientID string, selectedAtt MessageAttachment, al
 	}
 }
 
+func loadSearchChatInventoryCmd(clientID string, currentUserName *string) tea.Cmd {
+	return func() tea.Msg {
+		token, err := GetValidTokenSilent(clientID)
+		if err != nil {
+			return MsgSearchChatInventoryLoaded{Err: err}
+		}
+		chats, err := GetAllChatsForSearch(token, currentUserName)
+		return MsgSearchChatInventoryLoaded{Chats: chats, Err: err}
+	}
+}
+
 // loadTeamsChannelsCmd fetches the list of joined Teams with their channels.
 // Requires Team.ReadBasic.All + Channel.ReadBasic.All scopes; returns MsgTeamsChannelsLoaded.
 func loadTeamsChannelsCmd(clientID string) tea.Cmd {

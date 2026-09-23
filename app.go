@@ -145,6 +145,8 @@ type App struct {
 	UserSearchStatus            string
 	UserSearchStatusUntil       *time.Time
 	UserSearchLocalResults      []Chat
+	UserSearchMemberResults     []Chat
+	UserSearchMessageResults    []MessageSearchResult
 	UserSearchChannelResults    []channelEntry
 	UserSearchDirectoryResults  []User
 	UserSearchSelectedIndex     int

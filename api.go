@@ -56,8 +56,8 @@ type Chat struct {
 	LastUpdated        *string        `json:"lastUpdatedDateTime,omitempty"`
 	Viewpoint          *ChatViewpoint `json:"viewpoint,omitempty"`
 	LastMessagePreview *Message       `json:"lastMessagePreview,omitempty"`
-	Members            []ChatMember   `json:"-"` // populated separately
-	CachedDisplayName  *string        `json:"-"` // computed, never from API
+	Members            []ChatMember   `json:"members,omitempty"` // expanded for search; otherwise populated separately
+	CachedDisplayName  *string        `json:"-"`                 // computed, never from API
 }
 
 // ChatViewpoint contains the read state for the current user.
@@ -1843,6 +1843,79 @@ func GetChats(accessToken string, existingChats []Chat, currentUserName *string)
 	}
 
 	return chats, currentUserName, nil
+}
+
+// GetAllChatsForSearch loads every paginated chat into a transient inventory.
+// It is intentionally separate from GetChats: chat_limit continues to bound the
+// sidebar, while global search can still find older conversations.
+func GetAllChatsForSearch(accessToken string, currentUserName *string) ([]Chat, error) {
+	path := "/me/chats?$top=50&$expand=members,lastMessagePreview&$orderby=lastMessagePreview/createdDateTime%20desc"
+	var chats []Chat
+	for path != "" {
+		body, err := graphGet(accessToken, path)
+		if err != nil {
+			return nil, fmt.Errorf("GetAllChatsForSearch: %w", err)
+		}
+		var page chatsResponse
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, fmt.Errorf("GetAllChatsForSearch: parse: %w", err)
+		}
+		chats = append(chats, page.Value...)
+		path = ""
+		if page.NextLink != nil {
+			path = graphPathFromNextLink(*page.NextLink)
+		}
+	}
+
+	byID := make(map[string]Chat, len(chats))
+	for _, chat := range chats {
+		if chat.ID == "" || (chat.ChatType == "meeting" && chat.LastMessagePreview == nil) {
+			continue
+		}
+		if existing, ok := byID[chat.ID]; !ok || chatActivityTime(chat).After(chatActivityTime(existing)) {
+			byID[chat.ID] = chat
+		}
+	}
+
+	result := make([]Chat, 0, len(byID))
+	for _, chat := range byID {
+		if chat.LastMessagePreview != nil {
+			FilterMessageAttachments(chat.LastMessagePreview)
+		}
+		if currentUserName != nil {
+			chat.Members = filterMember(chat.Members, *currentUserName)
+		}
+		name := computeDisplayName(&chat)
+		chat.CachedDisplayName = &name
+		result = append(result, chat)
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		return chatActivityTime(result[i]).After(chatActivityTime(result[j]))
+	})
+	return result, nil
+}
+
+func graphPathFromNextLink(next string) string {
+	switch {
+	case strings.HasPrefix(next, graphAPIBase):
+		return strings.TrimPrefix(next, graphAPIBase)
+	case strings.HasPrefix(next, graphAPIBeta):
+		return strings.TrimPrefix(next, graphAPIBeta)
+	default:
+		return next
+	}
+}
+
+func chatActivityTime(chat Chat) time.Time {
+	if chat.LastMessagePreview != nil {
+		when, _ := time.Parse(time.RFC3339Nano, chat.LastMessagePreview.CreatedDateTime)
+		return when
+	}
+	if chat.LastUpdated != nil {
+		when, _ := time.Parse(time.RFC3339Nano, *chat.LastUpdated)
+		return when
+	}
+	return time.Time{}
 }
 
 // ---------------------------------------------------------------------------

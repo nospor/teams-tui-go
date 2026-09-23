@@ -83,20 +83,19 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
   - Navigating back to a chat/channel or refocusing the window instantly wakes up the polling and pulls the latest messages.
 - Background tasks issued as Bubble Tea `Cmd` functions returning typed messages (`MsgChatsLoaded`, `MsgMessagesLoaded`, `MsgTick`, `MsgSendDone`)
 - **Search Architecture**:
-  - Activated by `/` in normal mode, which opens a beautiful, responsive fullscreen-budgeted modal overlay popup (`SearchPopupMode`) so the main chat view remains completely responsive and lag-free.
+  - Activated by `/` in normal mode, which opens a fullscreen-budgeted modal overlay popup (`SearchPopupMode`) so the main chat view remains responsive.
   - Pressing `Enter` in the search textinput submits the query, focuses the results navigation list, and triggers background recursive loading of older messages directly into a separate `HistoryMessages` cache (updating `HistoryNextLink`) using an `IsSearch` flag to separate background loads from main chat lists.
-  - Matching messages are dynamically parsed with surrounding context window messages (`search_context_limit`, default 3) before and after, automatically deduplicated, sorted chronologically, and drawn with high-contrast gap indicators (`─── [gap in history] ───`) for breaks in conversation flow.
+  - Queries use the shared component grammar in `search_query.go` (literal or regexp tokens, `from:`/`in:`/`is:`/`has:`/`after:` fields). Matching messages include a surrounding context window (`search_context_limit`, default 3), are deduplicated, sorted chronologically, and drawn with gap indicators (`─── [gap in history] ───`).
   - In navigation mode, `j`/`k` scroll results, `y` yanks the selected message body, `u` extracts/selection-copies URLs, and `g` jumps to the selected message in the normal chat view (merging paged search history and setting selection/scrolling focus).
   - History cache, query, selected result index, and viewport scroll offsets are fully preserved and persisted *per chat* on close/reopen, avoiding redundant downloads and maintaining independent search states when switching between chats.
   - Main chat viewport offsets and snap-to-bottom values are preserved and restored cleanly when entering and exiting search popup mode.
 - **Chat Search & Open Popup**:
-  - Activated by `c` in normal mode, which opens a fullscreen-budgeted modal overlay popup (`UserSearchPopupMode`).
-  - While typing (`UserSearchMode`), it filters already loaded chats/members on-the-fly and populates `UserSearchLocalResults` under the `[Local Chat]` category.
-  - Pressing `Enter` in the input field:
-    - If the input contains `@` (looks like an email/UPN), it blurs the input and triggers a background `createChatCmd` calling `POST /chats` with type `oneOnOne` to retrieve/open the chat directly.
-    - Otherwise, it blurs the input to focus the results navigation list.
-  - Displays a filtered list of local chats.
-  - In navigation mode, `j`/`k` move the selection, `/` refocuses the input, and `Enter` opens the selected local chat.
+  - Activated by `c` in normal mode (`UserSearchPopupMode`). The first open asynchronously pages every Graph chat into `Model.searchChatInventory`. This inventory is session-only and must not enter `latestChats`, `stableChatOrder`, SQLite, or the visible sidebar until a selected result is opened.
+  - Free components support literal substring or regexp matching: components are ANDed in any order and arbitrary character-subsequence matching is not allowed (`search_query.go`).
+  - Results are separate sections: title/topic (`UserSearchLocalResults`), members (`UserSearchMemberResults`), loaded messages (`UserSearchMessageResults`), then channels. Message text must never promote a chat into a chat-name/member section.
+  - Asynchronous inventory responses preserve the highlighted result by `userSearchItemKey`; never retain only its old numeric result index across a rebuild.
+  - Pressing `Enter` in the input field opens the first match. If nothing matches and the input contains `@`, it triggers `createChatCmd` (`POST /chats` type `oneOnOne`).
+  - In navigation mode, `j`/`k` move the selection, `/` refocuses the input, and `Enter` opens the selected chat or jumps to a loaded message.
   - On success of `createChatCmd`, the chat is added/promoted, stable order is rebuilt, and the chat is opened and selected automatically.
 - **Message View/Preview Popup**:
   - Activated by pressing the `v` key in message selection mode (`m` in normal mode).
@@ -134,7 +133,7 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
 - Startup: banner → auth → profile → chats (with expanded last message preview) → sort → init model → run
 - All Bubble Tea commands (async API calls) are defined here
 - Initial chat order computed in `loadInitialChatOrder()` using the pre-fetched `LastMessagePreview` field
-- **Optional-feature commands**: `loadPresenceCmd`, `loadUserProfileCmd`, `downloadFileCmd`, `loadTeamsChannelsCmd`, `exportChatMarkdownCmd` — each calls `GetValidTokenSilent` then the corresponding function and returns a typed `MsgXxxLoaded` / `MsgFileDownloaded` / `MsgChatExported`.
+- **Optional-feature commands**: `loadPresenceCmd`, `loadUserProfileCmd`, `downloadFileCmd`, `loadTeamsChannelsCmd`, `exportChatMarkdownCmd` — each calls `GetValidTokenSilent` then the corresponding function and returns a typed `MsgXxxLoaded` / `MsgFileDownloaded` / `MsgChatExported`. `loadSearchChatInventoryCmd` pages every chat for global search and returns `MsgSearchChatInventoryLoaded`.
 - `app.Features` is populated here at startup (after loading config) by calling each `ResolveFeatureXxx()` helper.
 
 ---
