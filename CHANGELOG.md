@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.5] - 2026-09-29
+
+### Bug Fixes
+
+- *(chats)* **Keep unread bookmark chats after they are opened** - ([435a73a](https://github.com/nospor/teams-tui-go/commit/435a73a25b4e3d37ceb701ce96a9200217309795))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.3.4 [skip ci]** - ([6eee8c5](https://github.com/nospor/teams-tui-go/commit/6eee8c58e1e3973224623c56d9f0f02f862f07d8))
+
+
+
 ## [1.3.4] - 2026-09-29
 
 ### Features
