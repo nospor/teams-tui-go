@@ -25,7 +25,8 @@ Authenticates via **OAuth2 Device Code Flow** (no browser redirect needed), fetc
 - 🔍 Search History — search messages in the current chat (`/`) with literal/regexp components, recursively loading history in the background
 - 🔍 Chat Search & Open — press `c` to search chat titles, participants, and loaded messages, including chats outside the sidebar limit; open/start a 1:1 chat by entering a UPN/email
 - ⭐ Favourites — pin any chat to the top of the sidebar with `f`; favourites are sorted alphabetically and stay anchored regardless of activity
-- 📑 Bookmarks — press `b` to filter the sidebar (unread, today, favourites, 1:1, groups, meetings, …) without dropping chats from memory
+- 📑 Bookmarks — press `b` to filter the sidebar (unread, today, snoozed, favourites, 1:1, groups, meetings, …) without dropping chats from memory
+- 💤 Snooze — press `z` to hide a chat for a while (default 3 hours); `Z` opens a duration menu. Incoming messages still notify and wake the chat. Use the `z` bookmark (`bz`) to see snoozed chats.
 - ❓ Help Popup — press `?` at any time to show a keyboard shortcuts reference with optional feature status
 
 - 🔵 Unread Indicators — chats with new messages are marked with a dot (●) and bold text
@@ -169,6 +170,19 @@ Complete chat transcripts (from the chat actions popup) are written here:
   }
   ```
   - `export_directory`: Destination folder for Markdown exports (default: `"~/Downloads"`). `~` is expanded to the home directory.
+
+### Snooze
+Hides a chat from the sidebar until a chosen time. New messages from others still notify and wake the chat.
+
+  ```json
+  {
+    "default_snooze_minutes": 180,
+    "workday_start": "07:00",
+    "workday_end": "18:00"
+  }
+  ```
+  - `default_snooze_minutes`: Duration for `z` (default: `180`).
+  - `workday_start` / `workday_end`: Local `HH:MM` times used by the `Z` menu for tomorrow morning and end of workday.
 
 ### Channel Message Refresh
 Configure background refresh rate for unhidden channels (in minutes) in `~/.config/teams-tui-go/config.json`:
@@ -421,6 +435,8 @@ If two actions in the same mode are given the same key, the one you set explicit
 | `favourite`     | `f`           | Toggle favourite                      |
 | `actions`       | `a`           | Open chat actions popup               |
 | `bookmarks`     | `b`           | Filter the sidebar with a bookmark    |
+| `snooze`        | `z`           | Snooze the selected chat              |
+| `snooze_menu`   | `Z`           | Open the snooze duration menu         |
 | `presence`      | `p`           | Chat presence                         |
 | `channel_hide`  | `h`           | Hide or unhide a channel              |
 | `quit`          | `q`           | Quit (`ctrl+c` always quits too)      |
@@ -579,7 +595,7 @@ Only these keys are commands. Everything else is typed into the message.
 
 ### chat_actions
 
-Opened with `normal.actions` (`a`) on a selected chat. Export is only bound here, so `e` in the chat list and in message mode is unchanged.
+Opened with `normal.actions` (`a`) on a selected chat. Export is only bound here, so `e` in the chat list and in message mode is unchanged. Snooze uses the same `z`/`Z` as normal mode.
 
 | Action | Default keys | What it does |
 | --- | --- | --- |
@@ -590,6 +606,8 @@ Opened with `normal.actions` (`a`) on a selected chat. Export is only bound here
 | `favourite` | `f` | Toggle favourite |
 | `export` | `e` | Export the complete chat as Markdown |
 | `artifacts` | `t` | Choose a recording or transcript |
+| `snooze` | `z` | Snooze the selected chat |
+| `snooze_menu` | `Z` | Open the snooze duration menu |
 | `close` | `esc`, `q` | Close the popup |
 
 ### artifacts
@@ -607,7 +625,7 @@ Opened from chat actions. Lists recordings and transcripts already loaded in thi
 
 ### bookmarks
 
-Opened with `normal.bookmarks` (`b`). Filters the visible sidebar only; the full chat set stays loaded. Press the preset key (`u`, `t`, `f`, …) or highlight a row and press Enter. `a` clears the filter. This is not the same as `f` pin-favourites.
+Opened with `normal.bookmarks` (`b`). Filters the visible sidebar only; the full chat set stays loaded. Press the preset key (`u`, `t`, `z`, `f`, …) or highlight a row and press Enter. `a` clears the filter (snoozed chats stay hidden until they wake). This is not the same as `f` pin-favourites.
 
 | Action | Default keys | What it does |
 | --- | --- | --- |
@@ -615,6 +633,24 @@ Opened with `normal.bookmarks` (`b`). Filters the visible sidebar only; the full
 | `prev` | `k`, `up` | Previous preset |
 | `confirm` | `enter` | Apply the highlighted preset |
 | `close` | `esc`, `q`, `b` | Close the popup |
+
+### snooze
+
+Opened with `normal.snooze_menu` (`Z`) on a selected chat. `normal.snooze` (`z`) applies the default duration immediately (`default_snooze_minutes`, 180). Snooze only hides the chat in the sidebar; a new message from someone else still notifies and unsnoozes it.
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `next` | `j`, `down` | Next duration |
+| `prev` | `k`, `up` | Previous duration |
+| `confirm` | `enter` | Apply the highlighted duration |
+| `minutes_10` | `m` | 10 minutes |
+| `hour` | `1` | 1 hour |
+| `hours_3` | `3` | 3 hours |
+| `workday_end` | `e` | Until `workday_end` (or next `workday_start` if that time has passed) |
+| `tomorrow` | `t` | Next `workday_start` |
+| `next_week` | `w` | Next week’s `workday_start` |
+| `unsnooze` | `u` | Clear the snooze |
+| `close` | `esc`, `q`, `Z` | Close the popup |
 
 ---
 
@@ -624,6 +660,7 @@ Opened with `normal.bookmarks` (`b`). Filters the visible sidebar only; the full
 | --------------------------------------------- | ----------------------------------- |
 | `~/.config/teams-tui-go/config.json`           | Client ID, notification mode, limits, keybindings, export directory |
 | `~/.config/teams-tui-go/favourites.json`       | Pinned/favourite chat IDs           |
+| `~/.config/teams-tui-go/snoozed_chats.json`    | Local snooze expiry times           |
 | `~/.cache/teams-tui-go/token.json`             | OAuth2 access + refresh tokens      |
 | `~/.cache/teams-tui-go/profile.json`           | Cached user profile                 |
 | `~/.cache/teams-tui-go/teams-tui-go.db`       | SQLite database caching messages    |

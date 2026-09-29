@@ -33,13 +33,14 @@ type KeyMap struct {
 	ChatActions       ChatActionsKeys
 	Artifacts         ArtifactsKeys
 	Bookmarks         BookmarksKeys
+	Snooze            SnoozeKeys
 }
 
 type NormalKeys struct {
 	Next, Prev, Section, PageDown, PageUp                   key.Binding
 	Notifications, Help, Compose, ChatSearch, Search        key.Binding
 	Sleep, Messages, Favourite, Presence, ChannelHide, Quit key.Binding
-	Actions, Bookmarks                                      key.Binding
+	Actions, Bookmarks, Snooze, SnoozeMenu                  key.Binding
 }
 
 type ComposeKeys struct {
@@ -112,6 +113,7 @@ type ChatActionsKeys struct {
 	Close, Next, Prev, Confirm key.Binding
 	Compose, Favourite, Export key.Binding
 	Artifacts                  key.Binding
+	Snooze, SnoozeMenu         key.Binding
 }
 
 type ArtifactsKeys struct {
@@ -121,6 +123,13 @@ type ArtifactsKeys struct {
 
 type BookmarksKeys struct {
 	Close, Next, Prev, Confirm key.Binding
+}
+
+type SnoozeKeys struct {
+	Close, Next, Prev, Confirm key.Binding
+	Minutes10, Hour, Hours3    key.Binding
+	WorkdayEnd, Tomorrow       key.Binding
+	NextWeek, Unsnooze         key.Binding
 }
 
 func bind(keys ...string) key.Binding {
@@ -149,6 +158,8 @@ func DefaultKeyMap() KeyMap {
 			Quit:          bind("q"),
 			Actions:       bind("a"),
 			Bookmarks:     bind("b"),
+			Snooze:        bind("z"),
+			SnoozeMenu:    bind("Z"),
 		},
 		Compose: ComposeKeys{
 			Cancel:     bind("esc"),
@@ -276,6 +287,8 @@ func DefaultKeyMap() KeyMap {
 			Favourite: bind("f"),
 			Export:    bind("e"),
 			Artifacts: bind("t"),
+			Snooze:    bind("z"),
+			SnoozeMenu: bind("Z"),
 		},
 		Artifacts: ArtifactsKeys{
 			Close:   bind("esc", "q"),
@@ -290,6 +303,19 @@ func DefaultKeyMap() KeyMap {
 			Next:    bind("j", "down"),
 			Prev:    bind("k", "up"),
 			Confirm: bind("enter"),
+		},
+		Snooze: SnoozeKeys{
+			Close:      bind("esc", "q", "Z"),
+			Next:       bind("j", "down"),
+			Prev:       bind("k", "up"),
+			Confirm:    bind("enter"),
+			Minutes10:  bind("m"),
+			Hour:       bind("1"),
+			Hours3:     bind("3"),
+			WorkdayEnd: bind("e"),
+			Tomorrow:   bind("t"),
+			NextWeek:   bind("w"),
+			Unsnooze:   bind("u"),
 		},
 	}
 }
@@ -347,6 +373,8 @@ func (k *KeyMap) slots(mode string) []keySlot {
 			{"channel_hide", "", &n.ChannelHide},
 			{"actions", "", &n.Actions},
 			{"bookmarks", "", &n.Bookmarks},
+			{"snooze", "", &n.Snooze},
+			{"snooze_menu", "", &n.SnoozeMenu},
 		}
 	case "compose":
 		c := &k.Compose
@@ -506,6 +534,8 @@ func (k *KeyMap) slots(mode string) []keySlot {
 			{"favourite", "", &c.Favourite},
 			{"export", "", &c.Export},
 			{"artifacts", "", &c.Artifacts},
+			{"snooze", "", &c.Snooze},
+			{"snooze_menu", "", &c.SnoozeMenu},
 		}
 	case "artifacts":
 		c := &k.Artifacts
@@ -525,6 +555,21 @@ func (k *KeyMap) slots(mode string) []keySlot {
 			{"prev", sharedPrev, &c.Prev},
 			{"confirm", sharedConfirm, &c.Confirm},
 		}
+	case "snooze":
+		c := &k.Snooze
+		return []keySlot{
+			{"close", sharedClose, &c.Close},
+			{"next", sharedNext, &c.Next},
+			{"prev", sharedPrev, &c.Prev},
+			{"confirm", sharedConfirm, &c.Confirm},
+			{"minutes_10", "", &c.Minutes10},
+			{"hour", "", &c.Hour},
+			{"hours_3", "", &c.Hours3},
+			{"workday_end", "", &c.WorkdayEnd},
+			{"tomorrow", "", &c.Tomorrow},
+			{"next_week", "", &c.NextWeek},
+			{"unsnooze", "", &c.Unsnooze},
+		}
 	default:
 		return nil
 	}
@@ -534,7 +579,7 @@ var modeNames = []string{
 	"normal", "compose", "mention", "message", "message_view", "reaction",
 	"delete_confirm", "url_list", "search_input", "search_results",
 	"chat_search_input", "chat_search_results", "help", "presence", "profile",
-	"filepicker", "chat_actions", "artifacts", "bookmarks",
+	"filepicker", "chat_actions", "artifacts", "bookmarks", "snooze",
 }
 
 var sharedNames = []string{

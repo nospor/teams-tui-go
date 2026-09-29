@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -71,5 +72,39 @@ func TestChatActionPopupHonoursConfiguredExportKey(t *testing.T) {
 	rendered := stripANSI(model.renderChatActionPopup(60, 20))
 	if !strings.Contains(rendered, "x") {
 		t.Fatalf("popup did not show remapped export key:\n%s", rendered)
+	}
+}
+
+func TestChatActionPopupSnoozeKeys(t *testing.T) {
+	name := "Ada"
+	app := NewApp()
+	app.Chats = []Chat{
+		{ID: "chat-1", CachedDisplayName: &name},
+		{ID: "chat-2", CachedDisplayName: &name},
+	}
+	app.SelectedIndex = 0
+	model := NewModel(app, "client", "user")
+	model.latestChats = app.Chats
+	model.stableChatOrder = []string{"chat-1", "chat-2"}
+	model.app.ChatActionPopupMode = true
+	model.snoozed = make(map[string]time.Time)
+
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	model, _ = model.handleChatActionPopupKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
+	if model.app.ChatActionPopupMode {
+		t.Fatal("snooze left the actions popup open")
+	}
+	if !model.chatSnoozed("chat-1", time.Now().Add(time.Minute)) {
+		t.Fatal("z from chat actions did not snooze")
+	}
+
+	model.app.SelectedIndex = 0
+	model.app.ChatActionPopupMode = true
+	model, _ = model.handleChatActionPopupKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'Z'}})
+	if model.app.ChatActionPopupMode {
+		t.Fatal("snooze menu left the actions popup open")
+	}
+	if !model.app.SnoozePopupMode {
+		t.Fatal("Z from chat actions did not open the snooze menu")
 	}
 }

@@ -23,6 +23,7 @@ type ChatListFilter struct {
 	FavouritesOnly bool
 	TodayOnly      bool
 	WithinHours    int
+	SnoozedOnly    bool
 }
 
 func newChatListFilter() ChatListFilter {
@@ -46,6 +47,7 @@ func chatFilterIsActive(filter ChatListFilter) bool {
 		filter.FavouritesOnly ||
 		filter.TodayOnly ||
 		filter.WithinHours > 0 ||
+		filter.SnoozedOnly ||
 		len(filter.ChatTypes) > 0
 }
 
@@ -75,6 +77,9 @@ func chatFilterSummary(filter ChatListFilter) string {
 	if filter.WithinHours > 0 {
 		parts = append(parts, fmt.Sprintf("last %dh", filter.WithinHours))
 	}
+	if filter.SnoozedOnly {
+		parts = append(parts, "snoozed")
+	}
 	if len(parts) == 0 {
 		return "all"
 	}
@@ -96,6 +101,10 @@ func chatHasActivitySince(chat Chat, since time.Time) bool {
 }
 
 func (m Model) chatMatchesFilter(chat Chat, filter ChatListFilter) bool {
+	snoozed := m.chatSnoozed(chat.ID, time.Now())
+	if filter.SnoozedOnly != snoozed {
+		return false
+	}
 	unread := m.isUnread(chat)
 	switch filter.ReadState {
 	case ChatReadUnread:

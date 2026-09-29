@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -54,6 +55,47 @@ func SaveFavourites(favs map[string]bool) error {
 		return fmt.Errorf("could not marshal favourites: %w", err)
 	}
 	return os.WriteFile(filepath.Join(dir, "favourites.json"), data, 0o600)
+}
+
+func LoadSnoozedChats() map[string]time.Time {
+	dir, err := GetAppDir()
+	if err != nil {
+		return make(map[string]time.Time)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "snoozed_chats.json"))
+	if err != nil {
+		return make(map[string]time.Time)
+	}
+	var encoded map[string]string
+	if json.Unmarshal(data, &encoded) != nil {
+		return make(map[string]time.Time)
+	}
+	now := time.Now()
+	result := make(map[string]time.Time)
+	for id, value := range encoded {
+		if until, err := time.Parse(time.RFC3339, value); err == nil && until.After(now) {
+			result[id] = until
+		}
+	}
+	return result
+}
+
+func SaveSnoozedChats(snoozed map[string]time.Time) error {
+	dir, err := GetAppDir()
+	if err != nil {
+		return err
+	}
+	encoded := make(map[string]string, len(snoozed))
+	for id, until := range snoozed {
+		if id != "" && until.After(time.Now()) {
+			encoded[id] = until.Format(time.RFC3339)
+		}
+	}
+	data, err := json.MarshalIndent(encoded, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "snoozed_chats.json"), data, 0o600)
 }
 
 // LoadUnhiddenChannels reads the list of unhidden channel IDs from unhidden_channels.json.
@@ -182,6 +224,9 @@ type Config struct {
 	YoutrackCommand        *string `json:"youtrack_command,omitempty"`
 	GitlabCommand          *string `json:"gitlab_command,omitempty"`
 	ExportDirectory        *string `json:"export_directory,omitempty"`
+	DefaultSnoozeMinutes   *int    `json:"default_snooze_minutes,omitempty"`
+	WorkdayStart           *string `json:"workday_start,omitempty"`
+	WorkdayEnd             *string `json:"workday_end,omitempty"`
 
 	// Keybindings overrides default keys. Omitted actions keep their defaults.
 	// See README for the action ids. Not written by InitConfig.
@@ -363,6 +408,21 @@ func InitConfig() {
 	if cfg.ExportDirectory == nil {
 		dir := "~/Downloads"
 		cfg.ExportDirectory = &dir
+		modified = true
+	}
+	if cfg.DefaultSnoozeMinutes == nil {
+		v := 180
+		cfg.DefaultSnoozeMinutes = &v
+		modified = true
+	}
+	if cfg.WorkdayStart == nil {
+		v := "07:00"
+		cfg.WorkdayStart = &v
+		modified = true
+	}
+	if cfg.WorkdayEnd == nil {
+		v := "18:00"
+		cfg.WorkdayEnd = &v
 		modified = true
 	}
 
@@ -572,6 +632,30 @@ func ResolveExportDirectory() string {
 		return strings.TrimSpace(*cfg.ExportDirectory)
 	}
 	return "~/Downloads"
+}
+
+func ResolveDefaultSnoozeMinutes() int {
+	cfg := LoadConfig()
+	if cfg != nil && cfg.DefaultSnoozeMinutes != nil && *cfg.DefaultSnoozeMinutes > 0 {
+		return *cfg.DefaultSnoozeMinutes
+	}
+	return 180
+}
+
+func ResolveWorkdayStart() string {
+	cfg := LoadConfig()
+	if cfg != nil && cfg.WorkdayStart != nil && strings.TrimSpace(*cfg.WorkdayStart) != "" {
+		return strings.TrimSpace(*cfg.WorkdayStart)
+	}
+	return "07:00"
+}
+
+func ResolveWorkdayEnd() string {
+	cfg := LoadConfig()
+	if cfg != nil && cfg.WorkdayEnd != nil && strings.TrimSpace(*cfg.WorkdayEnd) != "" {
+		return strings.TrimSpace(*cfg.WorkdayEnd)
+	}
+	return "18:00"
 }
 
 // ResolveBrowserCommand returns the browser command, using precedence:

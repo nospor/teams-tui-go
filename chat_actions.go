@@ -13,10 +13,12 @@ import (
 type chatActionID string
 
 const (
-	chatActionCompose   chatActionID = "compose"
-	chatActionFavourite chatActionID = "favourite"
-	chatActionExport    chatActionID = "export"
-	chatActionArtifacts chatActionID = "artifacts"
+	chatActionCompose    chatActionID = "compose"
+	chatActionFavourite  chatActionID = "favourite"
+	chatActionExport     chatActionID = "export"
+	chatActionArtifacts  chatActionID = "artifacts"
+	chatActionSnooze     chatActionID = "snooze"
+	chatActionSnoozeMenu chatActionID = "snooze_menu"
 )
 
 type chatAction struct {
@@ -32,6 +34,8 @@ func (m Model) configuredChatActions() []chatAction {
 		{Binding: k.Favourite, Label: "Toggle favourite", ID: chatActionFavourite},
 		{Binding: k.Export, Label: "Export complete Markdown transcript", ID: chatActionExport},
 		{Binding: k.Artifacts, Label: "Choose a recording or transcript", ID: chatActionArtifacts},
+		{Binding: k.Snooze, Label: "Snooze chat", ID: chatActionSnooze},
+		{Binding: k.SnoozeMenu, Label: "Snooze duration menu", ID: chatActionSnoozeMenu},
 	}
 	out := make([]chatAction, 0, len(all))
 	for _, action := range all {
@@ -113,6 +117,10 @@ func (m Model) executeChatAction(id chatActionID) (Model, tea.Cmd) {
 		return m.startChatExport()
 	case chatActionArtifacts:
 		return m.openConversationArtifacts()
+	case chatActionSnooze:
+		return m.quickSnooze()
+	case chatActionSnoozeMenu:
+		return m.openSnoozePopup(), nil
 	default:
 		return m, nil
 	}

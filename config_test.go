@@ -137,6 +137,15 @@ func TestInitConfig(t *testing.T) {
 	if updatedCfg.ExportDirectory == nil || *updatedCfg.ExportDirectory != "~/Downloads" {
 		t.Errorf("expected default export directory ~/Downloads, got %v", updatedCfg.ExportDirectory)
 	}
+	if updatedCfg.DefaultSnoozeMinutes == nil || *updatedCfg.DefaultSnoozeMinutes != 180 {
+		t.Errorf("expected default snooze minutes 180, got %v", updatedCfg.DefaultSnoozeMinutes)
+	}
+	if updatedCfg.WorkdayStart == nil || *updatedCfg.WorkdayStart != "07:00" {
+		t.Errorf("expected default workday start 07:00, got %v", updatedCfg.WorkdayStart)
+	}
+	if updatedCfg.WorkdayEnd == nil || *updatedCfg.WorkdayEnd != "18:00" {
+		t.Errorf("expected default workday end 18:00, got %v", updatedCfg.WorkdayEnd)
+	}
 	if updatedCfg.YoutrackCommand != nil {
 		t.Errorf("expected default youtrack command to be nil, got %v", updatedCfg.YoutrackCommand)
 	}

@@ -206,12 +206,19 @@ type App struct {
 	ChatActionPopupMode     bool
 	ChatActionSelectedIndex int
 	ExportDirectory         string // destination for Markdown chat exports
+	DefaultSnoozeMinutes    int
+	WorkdayStart            string
+	WorkdayEnd              string
 
 	// ── Chat bookmarks (sidebar filter) ──────────────────────────────────
 	ChatBookmarkPopupMode     bool
 	ChatBookmarkSelectedIndex int
 	ActiveChatFilter          ChatListFilter
 	ActiveChatBookmark        string
+
+	// ── Snooze popup ─────────────────────────────────────────────────────
+	SnoozePopupMode     bool
+	SnoozeSelectedIndex int
 
 	// ── Recordings / transcripts popup ───────────────────────────────────
 	ArtifactPopupMode     bool
@@ -276,6 +283,9 @@ func NewApp() *App {
 		Keys:                      DefaultKeyMap(),
 		ExportDirectory:           "~/Downloads",
 		ActiveChatFilter:          newChatListFilter(),
+		DefaultSnoozeMinutes:      180,
+		WorkdayStart:              "07:00",
+		WorkdayEnd:                "18:00",
 	}
 }
 

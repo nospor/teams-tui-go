@@ -26,9 +26,9 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
 ### Configuration (`config.go`)
 - App data: `~/.config/teams-tui-go/` (via `GetAppDir()`)
 - Cache: `~/.cache/teams-tui-go/` (via `GetCacheDir()`)
-- Config struct: `ClientID *string`, `NotificationMode *NotificationMode`, `NotificationShowPreview *bool`, `NotificationPreviewLen *int`, `MessageLimit *int`, `SearchContextLimit *int`, `ChatLimit *int`, `ChatIconTheme *string`, `CustomChatIcons map[string]string`, `ExternalEditor *string`, `ExportDirectory *string`, plus six optional feature flags: `FilePreviewEnabled`, `PresenceEnabled`, `UserProfileEnabled`, `UserProfileExtended`, `TeamsChannelsEnabled`, `ChannelMentionsEnabled`
+- Config struct: `ClientID *string`, `NotificationMode *NotificationMode`, `NotificationShowPreview *bool`, `NotificationPreviewLen *int`, `MessageLimit *int`, `SearchContextLimit *int`, `ChatLimit *int`, `ChatIconTheme *string`, `CustomChatIcons map[string]string`, `ExternalEditor *string`, `ExportDirectory *string`, `DefaultSnoozeMinutes *int`, `WorkdayStart *string`, `WorkdayEnd *string`, plus six optional feature flags: `FilePreviewEnabled`, `PresenceEnabled`, `UserProfileEnabled`, `UserProfileExtended`, `TeamsChannelsEnabled`, `ChannelMentionsEnabled`
 - `ResolveClientID()`, `ResolveMessageLimit()`, `ResolveSearchContextLimit()`, `ResolveChatLimit()`, and `ResolveExternalEditor()` implement the full precedence chain
-- `InitConfig()` is run at application startup to populate any missing configuration keys in `config.json` with their default values and persist them to disk. It defaults `ChatIconTheme` to `"unicode"` and all feature flags to `false`.
+- `InitConfig()` is run at application startup to populate any missing configuration keys in `config.json` with their default values and persist them to disk. It defaults `ChatIconTheme` to `"unicode"`, `default_snooze_minutes` to `180`, `workday_start`/`workday_end` to `07:00`/`18:00`, and all feature flags to `false`.
 - `BuildScopes()` assembles the OAuth2 scope string dynamically: always includes the four basic scopes (`User.Read Chat.ReadWrite offline_access`) and appends optional scopes for each enabled feature flag.
 - Six `ResolveFeatureXxx()` helpers (one per feature) read the config and return a bool, used by `BuildScopes()` and during startup to populate `App.Features`.
 
@@ -48,7 +48,7 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
 - `NotificationMode` enum is JSON-serialised as a string ("None", "Console", "System", "Both")
 - `CurrentUserName` is used for filtering and message alignment; it is **not displayed in the UI**
 - `FeatureFlags` struct (populated once at startup in `main.go` from `ResolveFeatureXxx()`) exposes booleans for each optional feature. **Always read feature state from `app.Features`** — never call `ResolveFeatureXxx()` inside the Bubble Tea event loop.
-- New optional-feature popup / state fields on `App`: `PresencePopupMode`, `PresenceData`, `PresenceLoading`, `PresenceUserName`; `UserProfilePopupMode`, `UserProfileData`, `UserProfileLoading`; `AttachmentCursorMode`, `AttachmentSelectedIndex`; `TeamsData []TeamWithChannels`, `TeamsDataLoading`, `SelectedChannelTeamID`, `SelectedChannelID`; `HelpPopupMode`; `ChatActionPopupMode`, `ChatActionSelectedIndex`; `ChatBookmarkPopupMode`, `ChatBookmarkSelectedIndex`, `ActiveChatFilter`, `ActiveChatBookmark`; `MentionPopupMode`, `MentionSearch`, `MentionSelectedIndex`, `MentionSuggestions`, `MentionStartIndex`, `TeamMembersCache`.
+- New optional-feature popup / state fields on `App`: `PresencePopupMode`, `PresenceData`, `PresenceLoading`, `PresenceUserName`; `UserProfilePopupMode`, `UserProfileData`, `UserProfileLoading`; `AttachmentCursorMode`, `AttachmentSelectedIndex`; `TeamsData []TeamWithChannels`, `TeamsDataLoading`, `SelectedChannelTeamID`, `SelectedChannelID`; `HelpPopupMode`; `ChatActionPopupMode`, `ChatActionSelectedIndex`; `ChatBookmarkPopupMode`, `ChatBookmarkSelectedIndex`, `ActiveChatFilter`, `ActiveChatBookmark`; `SnoozePopupMode`, `SnoozeSelectedIndex`; `MentionPopupMode`, `MentionSearch`, `MentionSelectedIndex`, `MentionSuggestions`, `MentionStartIndex`, `TeamMembersCache`.
 - **Teams Channels**: `TeamsData` is `[]TeamWithChannels` (loaded once at startup via `loadTeamsChannelsCmd` fired from `Init()`). The sidebar shows a `── Teams ──` divider below chats; `Model.channelSelectedIndex` (-1 = chat mode, ≥0 = channel index into `allChannels()`) drives navigation. Pressing `j` at the last chat enters channel mode; `k` at index 0 exits back to chats. Selecting a channel fires `loadChannelMessagesCmd` and displays messages in the right panel; `MsgChannelMessagesLoaded` populates `app.Messages`. `SelectedChannelTeamID`/`SelectedChannelID` track the active channel (`""` = chat mode).
 
 ### UI (`ui.go`)
@@ -72,9 +72,13 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
   - The `★` icon appears before the chat type tag in the sidebar (yellow for non-selected, inline for selected)
 - **Bookmarks**:
   - Activated by `b` (`normal.bookmarks`) in normal mode. `ChatBookmarkPopupMode` overlay; keys live in `app.Keys.Bookmarks` (close includes `b` by default).
-  - Presets (`a` all, `u` unread, `r` read, `t` today, `2` last 24h, `w` last 7 days, `f` favourites, `d` 1:1, `g` groups, `m` meetings) set `ActiveChatFilter` and rebuild the **visible** sidebar only.
+  - Presets (`a` all, `u` unread, `r` read, `t` today, `2` last 24h, `w` last 7 days, `z` snoozed, `f` favourites, `d` 1:1, `g` groups, `m` meetings) set `ActiveChatFilter` and rebuild the **visible** sidebar only.
   - `latestChats` / `chatListCache` keep the full chat set. `rebuildChatList()` applies `chatMatchesFilter` after favourites + stable order, then restores selection **by chat ID**.
-  - `f` still pin-favourites; the `f` bookmark only hides non-favourited chats. No snooze preset, no `v` filter form, no custom `config.json` bookmark list.
+  - `f` still pin-favourites; the `f` bookmark only hides non-favourited chats. Default filters hide snoozed chats (`SnoozedOnly` must match `chatSnoozed`). No `v` filter form, no custom `config.json` bookmark list.
+- **Snooze**:
+  - Local hide-until, persisted in `~/.config/teams-tui-go/snoozed_chats.json`. Not a Graph mute: a new message from someone else still notifies and `wakeChat()`s the conversation.
+  - `z` (`normal.snooze`) uses `DefaultSnoozeMinutes` (default 180). `Z` (`normal.snooze_menu`) opens `SnoozePopupMode`; duration keys live in `app.Keys.Snooze`.
+  - Workday presets read `app.WorkdayStart` / `app.WorkdayEnd` (resolved once at startup). Expired entries are pruned on the tick timer.
 - **Read Logic**:
   - `lastMsgID` and `lastMsgTime` track latest content
   - `lastReadMsgID` tracks what was read locally in this session
@@ -123,11 +127,13 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
   - Handled by `handleHelpPopupKey` / `renderHelpPopup` in `ui.go`. Closed with `ESC`/`q`/`?`/`Enter`.
 - **Chat Actions Popup**:
   - Activated by `a` (`normal.actions`) on a selected chat (not channels). `ChatActionPopupMode` overlay; keys live in `app.Keys.ChatActions`.
-  - Actions: compose, favourite, export complete Markdown transcript, choose a recording or transcript. Export and recordings/transcripts are bound only in this mode (`e` / `t` by default).
+  - Actions: compose, favourite, export complete Markdown transcript, choose a recording or transcript, snooze (`z`), snooze duration menu (`Z`). Export and recordings/transcripts are bound only in this mode (`e` / `t` by default); snooze keys match `normal.snooze` / `normal.snooze_menu`.
   - Labels must use `FormatKeys`. Close with `esc`/`q`; `j`/`k`/`enter` navigate and run.
   - Export follows every Graph next-link via `GetAllChatMessages` in `export.go`, writes under `export_directory` (default `~/Downloads`), and returns `MsgChatExported`.
 - **Bookmarks Popup**:
   - Activated by `b` (`normal.bookmarks`). Handled by `handleChatBookmarkPopupKey` / `renderChatBookmarkPopup` in `bookmarks.go`. Closed with `esc`/`q`/`b`.
+- **Snooze Popup**:
+  - Activated by `Z` (`normal.snooze_menu`) on a selected chat. Handled by `handleSnoozePopupKey` / `renderSnoozePopup` in `snooze.go`. Closed with `esc`/`q`/`Z`.
 - **Recordings / transcripts popup**:
   - Opened from chat actions (`t`). Collects `callRecording` / `callTranscript` events from loaded cache, history, and the current message list (`conversation_artifacts.go`).
   - Recordings prefer `eventDetail.callRecordingUrl`; transcripts fall back to the message or chat `webUrl`. `Enter`/`y` copy the link; `o` opens it. The list is clipped to the popup height so the footer and border stay visible.

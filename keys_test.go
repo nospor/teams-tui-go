@@ -106,6 +106,9 @@ func TestResolveKeyMapChatActionsOverlay(t *testing.T) {
 	if got := km.ChatActions.Favourite.Keys(); !sameKeys(got, []string{"f"}) {
 		t.Fatalf("favourite should keep default, got %v", got)
 	}
+	if got := km.ChatActions.Snooze.Keys(); !sameKeys(got, []string{"z"}) {
+		t.Fatalf("snooze should keep default, got %v", got)
+	}
 	if got := km.Message.Edit.Keys(); !sameKeys(got, []string{"e"}) {
 		t.Fatalf("message.edit should stay e, got %v", got)
 	}
@@ -130,6 +133,31 @@ func TestResolveKeyMapBookmarksOverlay(t *testing.T) {
 	}
 	if got := km.Normal.Actions.Keys(); !sameKeys(got, []string{"a"}) {
 		t.Fatalf("actions should stay a, got %v", got)
+	}
+}
+
+func TestResolveKeyMapSnoozeOverlay(t *testing.T) {
+	km, warns := ResolveKeyMap([]byte(`{
+		"normal": {"snooze": ["x"], "snooze_menu": ["X"]},
+		"snooze": {"unsnooze": ["c"], "hours_3": ["h"]}
+	}`))
+	if len(warns) != 0 {
+		t.Fatalf("unexpected warnings: %v", warns)
+	}
+	if got := km.Normal.Snooze.Keys(); !sameKeys(got, []string{"x"}) {
+		t.Fatalf("normal.snooze = %v", got)
+	}
+	if got := km.Normal.SnoozeMenu.Keys(); !sameKeys(got, []string{"X"}) {
+		t.Fatalf("normal.snooze_menu = %v", got)
+	}
+	if got := km.Snooze.Unsnooze.Keys(); !sameKeys(got, []string{"c"}) {
+		t.Fatalf("snooze.unsnooze = %v", got)
+	}
+	if got := km.Snooze.Hours3.Keys(); !sameKeys(got, []string{"h"}) {
+		t.Fatalf("snooze.hours_3 = %v", got)
+	}
+	if got := km.Snooze.Minutes10.Keys(); !sameKeys(got, []string{"m"}) {
+		t.Fatalf("minutes_10 should keep default, got %v", got)
 	}
 }
 

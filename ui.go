@@ -301,6 +301,9 @@ type Model struct {
 	// that a filter currently hides so favourites and later rebuilds still see them.
 	chatListCache map[string]Chat
 
+	// snoozed maps chat ID to the local time the chat should reappear.
+	snoozed map[string]time.Time
+
 	// unhiddenChannels holds channel IDs that are unhidden by the user.
 	// Loaded from and persisted to unhidden_channels.json in the app config dir.
 	unhiddenChannels map[string]bool
@@ -413,6 +416,7 @@ func NewModel(app *App, clientID, userID string) Model {
 		notifiedReactions:    make(map[string]map[string]bool),
 		pendingEdits:         make(map[string]string),
 		favourites:           make(map[string]bool),
+		snoozed:              make(map[string]time.Time),
 		unhiddenChannels:     make(map[string]bool),
 		chatListCache:        make(map[string]Chat),
 		originalTeamIndex:    make(map[string]int),
@@ -525,6 +529,20 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 			m.app.MessagePopupStatus = ""
 			m.app.MessagePopupStatusUntil = nil
 			m.tickDidWork = true
+		}
+
+		if m.pruneExpiredSnoozes(time.Now()) {
+			prevID := m.activeConversationID()
+			m = m.rebuildChatList()
+			m.tickDidWork = true
+			if m.channelSelectedIndex < 0 {
+				if chat := m.app.GetSelectedChat(); chat != nil && chat.ID != prevID {
+					idx := m.app.SelectedIndex
+					cmds = append(cmds, loadMessagesCmd(m.clientID, chat.ID, idx))
+				} else if chat == nil && prevID != "" {
+					m.app.Messages = nil
+				}
+			}
 		}
 
 		// Periodic chat refresh every ~15 s.
@@ -672,6 +690,9 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 				if m.app.CurrentUserName != nil && c.LastMessagePreview.From != nil &&
 					c.LastMessagePreview.From.User != nil && c.LastMessagePreview.From.User.DisplayName != nil {
 					isOwnMsg = *c.LastMessagePreview.From.User.DisplayName == *m.app.CurrentUserName
+				}
+				if !isOwnMsg {
+					m.wakeChat(c.ID)
 				}
 
 				isActiveChat := false
@@ -1747,6 +1768,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if m.app.ChatBookmarkPopupMode {
 		return m.handleChatBookmarkPopupKey(msg)
 	}
+	if m.app.SnoozePopupMode {
+		return m.handleSnoozePopupKey(msg)
+	}
 	if m.app.ArtifactPopupMode {
 		return m.handleConversationArtifactPopupKey(msg)
 	}
@@ -1880,6 +1904,12 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 	case pressed(msg, k.Bookmarks):
 		return m.openChatBookmarkPopup(), nil
+
+	case pressed(msg, k.Snooze):
+		return m.quickSnooze()
+
+	case pressed(msg, k.SnoozeMenu):
+		return m.openSnoozePopup(), nil
 
 	case pressed(msg, k.Compose):
 		return m.startCompose()
@@ -3091,6 +3121,29 @@ func (m Model) renderView() string {
 			popupH = m.height
 		}
 		modal := m.renderChatBookmarkPopup(popupW, popupH)
+		result = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
+	} else if m.app.SnoozePopupMode {
+		popupW := m.width * 50 / 100
+		popupH := m.height * 55 / 100
+		if popupW < 42 {
+			popupW = 42
+		}
+		if popupH < 16 {
+			popupH = 16
+		}
+		if maxW := m.width - 2; maxW > 0 && popupW > maxW {
+			popupW = maxW
+		}
+		if maxH := m.height - 2; maxH > 0 && popupH > maxH {
+			popupH = maxH
+		}
+		if popupW < 1 {
+			popupW = m.width
+		}
+		if popupH < 8 {
+			popupH = m.height
+		}
+		modal := m.renderSnoozePopup(popupW, popupH)
 		result = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
 	} else if m.app.ArtifactPopupMode {
 		popupW := m.width * 70 / 100
@@ -6234,6 +6287,7 @@ func (m Model) getHelpContentLines() []string {
 	actions := m.app.Keys.ChatActions
 	art := m.app.Keys.Artifacts
 	bookmarks := m.app.Keys.Bookmarks
+	snooze := m.app.Keys.Snooze
 	hk := func(b key.Binding) string { return FormatKeys(b, " / ") }
 
 	sections := []struct {
@@ -6251,6 +6305,8 @@ func (m Model) getHelpContentLines() []string {
 			{hk(n.Favourite), "Toggle favourite (chats only)"},
 			{hk(n.Actions), "Open chat actions (compose, favourite, export)"},
 			{hk(n.Bookmarks), "Filter the sidebar with a bookmark preset"},
+			{hk(n.Snooze), "Snooze the selected chat (default duration)"},
+			{hk(n.SnoozeMenu), "Open the snooze duration menu"},
 			{hk(n.ChannelHide), "Toggle hide/unhide channel (channels only)"},
 			{hk(n.Presence), "Presence status of chat participants (chats only, feature: presence_enabled)"},
 			{hk(n.Notifications), "Cycle notification mode"},
@@ -6345,6 +6401,8 @@ func (m Model) getHelpContentLines() []string {
 			{hk(actions.Favourite), "Toggle favourite"},
 			{hk(actions.Export), "Export the complete chat as Markdown"},
 			{hk(actions.Artifacts), "Choose a recording or transcript"},
+			{hk(actions.Snooze), "Snooze the selected chat"},
+			{hk(actions.SnoozeMenu), "Open the snooze duration menu"},
 			{hk(actions.Close), "Close the popup"},
 		}},
 		{"Recordings and Transcripts (" + hk(actions.Artifacts) + ")", [][2]string{
@@ -6359,8 +6417,19 @@ func (m Model) getHelpContentLines() []string {
 			{"a", "All (clear the filter)"},
 			{"u / r", "Unread / read"},
 			{"t / 2 / w", "Today / last 24 hours / last 7 days"},
+			{"z", "Snoozed chats"},
 			{"f / d / g / m", "Favourites / 1:1 / groups / meetings"},
 			{hk(bookmarks.Close), "Close the popup"},
+		}},
+		{"Snooze (" + hk(n.Snooze) + " / " + hk(n.SnoozeMenu) + ")", [][2]string{
+			{hk(n.Snooze), "Hide the chat for the default duration (3 hours unless configured)"},
+			{hk(n.SnoozeMenu), "Open the duration menu"},
+			{hk(snooze.Next) + " / " + hk(snooze.Prev), "Move between durations"},
+			{hk(snooze.Confirm), "Apply the highlighted duration"},
+			{hk(snooze.Minutes10) + " / " + hk(snooze.Hour) + " / " + hk(snooze.Hours3), "10 minutes / 1 hour / 3 hours"},
+			{hk(snooze.WorkdayEnd) + " / " + hk(snooze.Tomorrow) + " / " + hk(snooze.NextWeek), "End of workday / tomorrow / next week"},
+			{hk(snooze.Unsnooze), "Clear the snooze"},
+			{hk(snooze.Close), "Close the popup"},
 		}},
 	}
 

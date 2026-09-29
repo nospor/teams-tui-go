@@ -31,6 +31,7 @@ func builtinChatBookmarkPresets() []chatBookmarkPreset {
 		preset("t", "Today", func(filter *ChatListFilter) { filter.TodayOnly = true }),
 		preset("2", "Last 24 hours", func(filter *ChatListFilter) { filter.WithinHours = 24 }),
 		preset("w", "Last 7 days", func(filter *ChatListFilter) { filter.WithinHours = 7 * 24 }),
+		preset("z", "Snoozed", func(filter *ChatListFilter) { filter.SnoozedOnly = true }),
 		preset("f", "Favourites", func(filter *ChatListFilter) { filter.FavouritesOnly = true }),
 		preset("d", "Direct (1:1)", func(filter *ChatListFilter) { filter.ChatTypes["oneOnOne"] = true }),
 		preset("g", "Groups", func(filter *ChatListFilter) { filter.ChatTypes["group"] = true }),

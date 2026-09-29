@@ -811,6 +811,9 @@ func main() {
 	app.YoutrackCommand = ResolveYoutrackCommand()
 	app.GitlabCommand = ResolveGitlabCommand()
 	app.ExportDirectory = ResolveExportDirectory()
+	app.DefaultSnoozeMinutes = ResolveDefaultSnoozeMinutes()
+	app.WorkdayStart = ResolveWorkdayStart()
+	app.WorkdayEnd = ResolveWorkdayEnd()
 	if cfg := LoadConfig(); cfg != nil {
 		if cfg.NotificationMode != nil {
 			app.NotificationMode = *cfg.NotificationMode
@@ -888,6 +891,7 @@ func main() {
 
 	// Load persisted favourites and apply them so favourites appear at the top on launch.
 	model.favourites = LoadFavourites()
+	model.snoozed = LoadSnoozedChats()
 	model.unhiddenChannels = LoadUnhiddenChannels()
 
 	// Fetch any favourited chats that weren't returned by the regular API call
