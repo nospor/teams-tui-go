@@ -67,13 +67,13 @@ func (m Model) startCompose() (Model, tea.Cmd) {
 	return m, m.textarea.Focus()
 }
 
-func (m Model) toggleFavourite() Model {
+func (m Model) toggleFavourite() (Model, tea.Cmd) {
 	if m.channelSelectedIndex >= 0 {
-		return m
+		return m, nil
 	}
 	chat := m.app.GetSelectedChat()
 	if chat == nil {
-		return m
+		return m, nil
 	}
 	name := ""
 	if chat.CachedDisplayName != nil {
@@ -88,13 +88,7 @@ func (m Model) toggleFavourite() Model {
 	}
 	_ = SaveFavourites(m.favourites)
 	m = m.rebuildChatList()
-	for i, c := range m.app.Chats {
-		if c.ID == chat.ID {
-			m.app.SelectedIndex = i
-			break
-		}
-	}
-	return m
+	return m.syncChatListSelection(chat.ID)
 }
 
 func (m Model) startChatExport() (Model, tea.Cmd) {
@@ -112,7 +106,7 @@ func (m Model) executeChatAction(id chatActionID) (Model, tea.Cmd) {
 	case chatActionCompose:
 		return m.startCompose()
 	case chatActionFavourite:
-		return m.toggleFavourite(), nil
+		return m.toggleFavourite()
 	case chatActionExport:
 		return m.startChatExport()
 	case chatActionArtifacts:

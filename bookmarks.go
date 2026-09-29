@@ -57,19 +57,18 @@ func (m Model) applyChatBookmark(preset chatBookmarkPreset) (Model, tea.Cmd) {
 	m.app.ActiveChatFilter = cloneChatListFilter(preset.Filter)
 	m.app.ActiveChatBookmark = preset.Name
 	m.app.ChatScrollOffset = 0
+	if preset.Filter.ReadState == ChatReadUnread {
+		m.unreadBookmarkIDs = m.captureUnreadBookmarkIDs()
+	} else {
+		m.unreadBookmarkIDs = nil
+	}
 	m = m.rebuildChatList()
 	m.app.SetStatus(fmt.Sprintf("Bookmark %s: %d shown", preset.Name, len(m.app.Chats)), 4*time.Second)
 
 	if m.channelSelectedIndex >= 0 {
 		return m, nil
 	}
-	if chat := m.app.GetSelectedChat(); chat != nil && chat.ID != prevID {
-		return m.loadChatMessages(chat.ID, m.app.SelectedIndex)
-	}
-	if m.app.GetSelectedChat() == nil && len(m.app.Chats) == 0 {
-		m.app.Messages = nil
-	}
-	return m, nil
+	return m.syncChatListSelection(prevID)
 }
 
 func (m Model) handleChatBookmarkPopupKey(msg tea.KeyMsg) (Model, tea.Cmd) {

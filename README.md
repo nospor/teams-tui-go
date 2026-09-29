@@ -627,6 +627,8 @@ Opened from chat actions. Lists recordings and transcripts already loaded in thi
 
 Opened with `normal.bookmarks` (`b`). Filters the visible sidebar only; the full chat set stays loaded. Press the preset key (`u`, `t`, `z`, `f`, …) or highlight a row and press Enter. `a` clears the filter (snoozed chats stay hidden until they wake). This is not the same as `f` pin-favourites.
 
+The Unread bookmark (`u`) keeps the chats that were unread when you applied it (and any that become unread later). Opening a chat marks it read as usual, but it stays in the Unread list until you pick another bookmark. Message loads are tied to the chat ID so a shrinking list cannot mix two conversations in the right pane.
+
 | Action | Default keys | What it does |
 | --- | --- | --- |
 | `next` | `j`, `down` | Next preset |

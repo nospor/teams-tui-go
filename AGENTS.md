@@ -73,7 +73,9 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
 - **Bookmarks**:
   - Activated by `b` (`normal.bookmarks`) in normal mode. `ChatBookmarkPopupMode` overlay; keys live in `app.Keys.Bookmarks` (close includes `b` by default).
   - Presets (`a` all, `u` unread, `r` read, `t` today, `2` last 24h, `w` last 7 days, `z` snoozed, `f` favourites, `d` 1:1, `g` groups, `m` meetings) set `ActiveChatFilter` and rebuild the **visible** sidebar only.
-  - `latestChats` / `chatListCache` keep the full chat set. `rebuildChatList()` applies `chatMatchesFilter` after favourites + stable order, then restores selection **by chat ID**.
+  - `latestChats` / `chatListCache` keep the full chat set. `rebuildChatList()` applies `chatMatchesFilter` after favourites + stable order, then restores selection **by chat ID**. If that ID is gone, `syncChatListSelection` loads the conversation now under `SelectedIndex` instead of leaving the pane on the previous chat.
+  - Unread (`u`) keeps `Model.unreadBookmarkIDs`: IDs that were unread when the preset was applied, plus any that become unread later. Opening a chat and marking it read does not drop it until another bookmark is applied.
+  - Message loads (`loadMessagesCmd` / `MsgMessagesLoaded`) are keyed by **chat ID**, not sidebar index, so a shrinking filter cannot merge one chat's messages into another.
   - `f` still pin-favourites; the `f` bookmark only hides non-favourited chats. Default filters hide snoozed chats (`SnoozedOnly` must match `chatSnoozed`). No `v` filter form, no custom `config.json` bookmark list.
 - **Snooze**:
   - Local hide-until, persisted in `~/.config/teams-tui-go/snoozed_chats.json`. Not a Graph mute: a new message from someone else still notifies and `wakeChat()`s the conversation.

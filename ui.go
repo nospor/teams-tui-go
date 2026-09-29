@@ -73,9 +73,9 @@ type MsgFileAttached struct {
 
 // MsgMessagesLoaded is sent when messages for a specific chat have loaded.
 type MsgMessagesLoaded struct {
-	ChatIndex int
-	Messages  []Message
-	NextLink  string
+	ChatID   string
+	Messages []Message
+	NextLink string
 }
 
 // MsgMoreMessagesLoaded is sent when older messages are loaded via pagination.
@@ -301,6 +301,12 @@ type Model struct {
 	// that a filter currently hides so favourites and later rebuilds still see them.
 	chatListCache map[string]Chat
 
+	// unreadBookmarkIDs is the sticky Unread-bookmark membership. Captured when
+	// the Unread preset is applied (and extended by chats that become unread
+	// later). Chats stay listed after they are marked read until another bookmark
+	// is chosen.
+	unreadBookmarkIDs map[string]bool
+
 	// snoozed maps chat ID to the local time the chat should reappear.
 	snoozed map[string]time.Time
 
@@ -419,6 +425,7 @@ func NewModel(app *App, clientID, userID string) Model {
 		snoozed:              make(map[string]time.Time),
 		unhiddenChannels:     make(map[string]bool),
 		chatListCache:        make(map[string]Chat),
+		unreadBookmarkIDs:    make(map[string]bool),
 		originalTeamIndex:    make(map[string]int),
 		originalChannelIndex: make(map[string]int),
 		focused:              true,
@@ -535,14 +542,9 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 			prevID := m.activeConversationID()
 			m = m.rebuildChatList()
 			m.tickDidWork = true
-			if m.channelSelectedIndex < 0 {
-				if chat := m.app.GetSelectedChat(); chat != nil && chat.ID != prevID {
-					idx := m.app.SelectedIndex
-					cmds = append(cmds, loadMessagesCmd(m.clientID, chat.ID, idx))
-				} else if chat == nil && prevID != "" {
-					m.app.Messages = nil
-				}
-			}
+			var cmd tea.Cmd
+			m, cmd = m.syncChatListSelection(prevID)
+			cmds = append(cmds, cmd)
 		}
 
 		// Periodic chat refresh every ~15 s.
@@ -575,8 +577,7 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 			if m.channelSelectedIndex < 0 && m.app.GetSelectedChat() != nil {
 				m.lastMessageRefresh = time.Now()
 				chat := m.app.GetSelectedChat()
-				idx := m.app.SelectedIndex
-				cmds = append(cmds, loadMessagesCmd(m.clientID, chat.ID, idx))
+				cmds = append(cmds, loadMessagesCmd(m.clientID, chat.ID))
 			} else if m.channelSelectedIndex >= 0 {
 				chans := m.allChannels()
 				if m.channelSelectedIndex < len(chans) {
@@ -805,7 +806,8 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 		// Build stable order.
 		m = m.mergeChats(m.latestChats)
 
-		// Restore selection.
+		// Restore selection by chat ID, then load a different conversation if
+		// the previous one left the visible list (do not keep a stale index).
 		if selectedID != "" {
 			for i, c := range m.app.Chats {
 				if c.ID == selectedID {
@@ -814,10 +816,13 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 				}
 			}
 		}
+		var selCmd tea.Cmd
+		m, selCmd = m.syncChatListSelection(selectedID)
+		cmds = append(cmds, selCmd)
 
-		// Refresh messages if selected chat is set.
-		if chat := m.app.GetSelectedChat(); chat != nil {
-			cmds = append(cmds, loadMessagesCmd(m.clientID, chat.ID, m.app.SelectedIndex))
+		// Refresh messages if the same chat is still selected.
+		if chat := m.app.GetSelectedChat(); chat != nil && chat.ID == selectedID {
+			cmds = append(cmds, loadMessagesCmd(m.clientID, chat.ID))
 		}
 
 	case MsgBackgroundMessagesLoaded:
@@ -928,51 +933,50 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 	case MsgMessagesLoaded:
 		// Always update the cache for the chat that was loaded, even if the
 		// user has since switched away. This ensures that revisiting the chat
-		// later shows fresh data immediately.
-		// Retrieve the chat ID from the index at the time the load was issued.
-		if msg.ChatIndex >= 0 && msg.ChatIndex < len(m.app.Chats) {
-			loadedChatID := m.app.Chats[msg.ChatIndex].ID
-			if loadedChatID != "" {
-				m.app.ChatMessagesLoadedOnce[loadedChatID] = true
-				m.app.ChatCacheDirty[loadedChatID] = false
-				if len(msg.Messages) > 0 {
-					// Merge into the existing cache rather than overwriting it.
-					// A blind overwrite would discard older pages that were already
-					// loaded via pagination, and would also wipe pending edit patches.
-					existing := m.app.CachedMessages[loadedChatID]
-					if len(existing) == 0 {
-						m.app.CachedMessages[loadedChatID] = msg.Messages
-					} else {
-						// Update/add only the messages present in the new batch.
-						idxMap := make(map[string]int, len(existing))
-						for i, em := range existing {
-							idxMap[em.ID] = i
-						}
-						for _, nm := range msg.Messages {
-							if idx, ok := idxMap[nm.ID]; ok {
-								existing[idx] = nm
-							} else {
-								existing = append(existing, nm)
-							}
-						}
-						sort.Slice(existing, func(i, j int) bool {
-							return existing[i].CreatedDateTime > existing[j].CreatedDateTime
-						})
-						m.app.CachedMessages[loadedChatID] = existing
+		// later shows fresh data immediately. Key by chat ID, never by the
+		// sidebar index — filters can shrink the list while a load is in flight.
+		loadedChatID := msg.ChatID
+		if loadedChatID != "" {
+			m.app.ChatMessagesLoadedOnce[loadedChatID] = true
+			m.app.ChatCacheDirty[loadedChatID] = false
+			if len(msg.Messages) > 0 {
+				// Merge into the existing cache rather than overwriting it.
+				// A blind overwrite would discard older pages that were already
+				// loaded via pagination, and would also wipe pending edit patches.
+				existing := m.app.CachedMessages[loadedChatID]
+				if len(existing) == 0 {
+					m.app.CachedMessages[loadedChatID] = msg.Messages
+				} else {
+					// Update/add only the messages present in the new batch.
+					idxMap := make(map[string]int, len(existing))
+					for i, em := range existing {
+						idxMap[em.ID] = i
 					}
-					m.app.CachedNextLink[loadedChatID] = msg.NextLink
-					if m.app.Features.SqliteEnabled {
-						go SaveMessages(loadedChatID, msg.Messages)
-						if msg.NextLink != "" {
-							go SaveNextLink(loadedChatID, msg.NextLink)
+					for _, nm := range msg.Messages {
+						if idx, ok := idxMap[nm.ID]; ok {
+							existing[idx] = nm
+						} else {
+							existing = append(existing, nm)
 						}
+					}
+					sort.Slice(existing, func(i, j int) bool {
+						return existing[i].CreatedDateTime > existing[j].CreatedDateTime
+					})
+					m.app.CachedMessages[loadedChatID] = existing
+				}
+				m.app.CachedNextLink[loadedChatID] = msg.NextLink
+				if m.app.Features.SqliteEnabled {
+					go SaveMessages(loadedChatID, msg.Messages)
+					if msg.NextLink != "" {
+						go SaveNextLink(loadedChatID, msg.NextLink)
 					}
 				}
 			}
 		}
 		// Discard UI update if the selected chat changed since we issued the load,
 		// or if we're now viewing a Teams channel instead.
-		if msg.ChatIndex != m.app.SelectedIndex || m.channelSelectedIndex >= 0 {
+		selected := m.app.GetSelectedChat()
+		if loadedChatID == "" || selected == nil || selected.ID != loadedChatID || m.channelSelectedIndex >= 0 {
 			break
 		}
 		m.app.SetLoadingMessages(false)
@@ -1270,7 +1274,7 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 			m.app.SetLoadingMessages(true)
 			m.app.SnapToBottom = true
 
-			cmds = append(cmds, loadMessagesCmd(m.clientID, chat.ID, m.app.SelectedIndex))
+			cmds = append(cmds, loadMessagesCmd(m.clientID, chat.ID))
 		}
 
 	// ── Focus / Blur ─────────────────────────────────────────────────────
@@ -1287,7 +1291,7 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		} else if chat := m.app.GetSelectedChat(); chat != nil {
 			m.lastMessageRefresh = time.Now()
-			cmds = append(cmds, loadMessagesCmd(m.clientID, chat.ID, m.app.SelectedIndex))
+			cmds = append(cmds, loadMessagesCmd(m.clientID, chat.ID))
 		}
 
 	case tea.BlurMsg:
@@ -1310,7 +1314,7 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 				}
 			} else if chat := m.app.GetSelectedChat(); chat != nil {
 				m.lastMessageRefresh = time.Now()
-				cmds = append(cmds, loadMessagesCmd(m.clientID, chat.ID, m.app.SelectedIndex))
+				cmds = append(cmds, loadMessagesCmd(m.clientID, chat.ID))
 			}
 		}
 
@@ -1871,7 +1875,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.app.SnapToBottom = true
 			if chat := m.app.GetSelectedChat(); chat != nil {
 				m = m.markRead()
-				return m.loadChatMessages(chat.ID, m.app.SelectedIndex)
+				return m.loadChatMessages(chat.ID)
 			}
 		} else {
 			// Currently in chats → switch to channels (go to first channel).
@@ -2033,7 +2037,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 
 	case pressed(msg, k.Favourite):
-		m = m.toggleFavourite()
+		return m.toggleFavourite()
 
 	case pressed(msg, k.Presence):
 		// Show presence popup for chats (requires presence_enabled feature).
@@ -2141,7 +2145,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.app.SnapToBottom = true
 		if chat := m.app.GetSelectedChat(); chat != nil {
 			m = m.markRead()
-			return m.loadChatMessages(chat.ID, m.app.SelectedIndex)
+			return m.loadChatMessages(chat.ID)
 		}
 	}
 
@@ -4728,6 +4732,26 @@ func (m Model) rebuildChatList() Model {
 	return m
 }
 
+// syncChatListSelection loads the newly selected chat when rebuildChatList left
+// a different conversation under SelectedIndex (or clears the pane if none remain).
+func (m Model) syncChatListSelection(prevID string) (Model, tea.Cmd) {
+	if m.channelSelectedIndex >= 0 {
+		return m, nil
+	}
+	chat := m.app.GetSelectedChat()
+	if chat == nil {
+		if prevID != "" {
+			m.app.Messages = nil
+			m.app.NextLink = ""
+		}
+		return m, nil
+	}
+	if chat.ID == prevID {
+		return m, nil
+	}
+	return m.loadChatMessages(chat.ID)
+}
+
 func (m Model) renderUrlSelection(w, h int) string {
 	if len(m.app.UrlsInMessage) == 0 {
 		return ""
@@ -7094,7 +7118,7 @@ func (m Model) rebuildMentionSuggestions() Model {
 	return m
 }
 
-func (m Model) loadChatMessages(chatID string, chatIndex int) (Model, tea.Cmd) {
+func (m Model) loadChatMessages(chatID string) (Model, tea.Cmd) {
 	m.lastMessageRefresh = time.Now()
 	// 1. Check in-memory cache first if it has been fully loaded once in this session.
 	if m.app.ChatMessagesLoadedOnce[chatID] {
@@ -7104,7 +7128,7 @@ func (m Model) loadChatMessages(chatID string, chatIndex int) (Model, tea.Cmd) {
 			m.app.SnapToBottom = true
 			if m.app.ChatCacheDirty[chatID] {
 				m.app.SetLoadingMessages(true)
-				return m, loadMessagesCmd(m.clientID, chatID, chatIndex)
+				return m, loadMessagesCmd(m.clientID, chatID)
 			}
 			m.app.SetLoadingMessages(false)
 			return m, nil
@@ -7125,7 +7149,7 @@ func (m Model) loadChatMessages(chatID string, chatIndex int) (Model, tea.Cmd) {
 			m.app.SnapToBottom = true
 			m.app.ChatMessagesLoadedOnce[chatID] = true
 			// Still fetch the latest messages in the background to update the DB and cache!
-			return m, loadMessagesCmd(m.clientID, chatID, chatIndex)
+			return m, loadMessagesCmd(m.clientID, chatID)
 		}
 	}
 
@@ -7141,7 +7165,7 @@ func (m Model) loadChatMessages(chatID string, chatIndex int) (Model, tea.Cmd) {
 		m.app.SetLoadingMessages(true)
 		m.app.SnapToBottom = true
 	}
-	return m, loadMessagesCmd(m.clientID, chatID, chatIndex)
+	return m, loadMessagesCmd(m.clientID, chatID)
 }
 
 func (m Model) loadChannelMessages(teamID string, channelID string) (Model, tea.Cmd) {

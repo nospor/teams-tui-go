@@ -389,7 +389,7 @@ func (m Model) handleUserSearchNavigationKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m, selected = m.revealChatFromSearch(targetID)
 			if selected {
 				m = m.closeUserSearch()
-				return m.loadChatMessages(targetID, m.app.SelectedIndex)
+				return m.loadChatMessages(targetID)
 			}
 		case UserSearchItemMessage:
 			result := *item.Message
@@ -401,7 +401,7 @@ func (m Model) handleUserSearchNavigationKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			chat := m.chatForSearch(result.ChatID)
 			knownMessages := m.knownMessagesForSearch(chat)
 			m = m.closeUserSearch()
-			m, loadCmd := m.loadChatMessages(result.ChatID, m.app.SelectedIndex)
+			m, loadCmd := m.loadChatMessages(result.ChatID)
 			m.app.Messages = mergeHistoryMessages(m.app.Messages, knownMessages)
 			m.app.CachedMessages[result.ChatID] = mergeHistoryMessages(m.app.CachedMessages[result.ChatID], knownMessages)
 			for index := range m.app.Messages {

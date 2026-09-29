@@ -91,7 +91,7 @@ func pollReactionsCmd(clientID string, chatIDs []string) tea.Cmd {
 }
 
 // loadMessagesCmd fetches messages for a specific chat in the background.
-func loadMessagesCmd(clientID, chatID string, chatIndex int) tea.Cmd {
+func loadMessagesCmd(clientID, chatID string) tea.Cmd {
 	return func() tea.Msg {
 		token, err := GetValidTokenSilent(clientID)
 		if err != nil {
@@ -101,7 +101,7 @@ func loadMessagesCmd(clientID, chatID string, chatIndex int) tea.Cmd {
 		if err != nil {
 			return nil
 		}
-		return MsgMessagesLoaded{ChatIndex: chatIndex, Messages: msgs, NextLink: next}
+		return MsgMessagesLoaded{ChatID: chatID, Messages: msgs, NextLink: next}
 	}
 }
 

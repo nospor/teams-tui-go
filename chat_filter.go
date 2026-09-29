@@ -108,7 +108,11 @@ func (m Model) chatMatchesFilter(chat Chat, filter ChatListFilter) bool {
 	unread := m.isUnread(chat)
 	switch filter.ReadState {
 	case ChatReadUnread:
-		if !unread {
+		if unread {
+			if m.unreadBookmarkIDs != nil {
+				m.unreadBookmarkIDs[chat.ID] = true
+			}
+		} else if !m.unreadBookmarkIDs[chat.ID] {
 			return false
 		}
 	case ChatReadRead:
@@ -130,4 +134,34 @@ func (m Model) chatMatchesFilter(chat Chat, filter ChatListFilter) bool {
 		return false
 	}
 	return true
+}
+
+func (m Model) captureUnreadBookmarkIDs() map[string]bool {
+	ids := make(map[string]bool)
+	seen := make(map[string]bool)
+	add := func(chats []Chat) {
+		for _, chat := range chats {
+			if seen[chat.ID] {
+				continue
+			}
+			seen[chat.ID] = true
+			if m.isUnread(chat) {
+				ids[chat.ID] = true
+			}
+		}
+	}
+	add(m.latestChats)
+	add(m.app.Chats)
+	if m.chatListCache != nil {
+		for _, chat := range m.chatListCache {
+			if seen[chat.ID] {
+				continue
+			}
+			seen[chat.ID] = true
+			if m.isUnread(chat) {
+				ids[chat.ID] = true
+			}
+		}
+	}
+	return ids
 }

@@ -174,7 +174,7 @@ func (m Model) applySnooze(until time.Time) (Model, tea.Cmd) {
 	}
 	if nextID != "" {
 		if updated, found := m.selectChatByID(nextID); found {
-			return updated.loadChatMessages(nextID, updated.app.SelectedIndex)
+			return updated.loadChatMessages(nextID)
 		}
 	}
 	m.app.SelectedIndex = -1
