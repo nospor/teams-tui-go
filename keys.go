@@ -32,13 +32,14 @@ type KeyMap struct {
 	FilePicker        FilePickerKeys
 	ChatActions       ChatActionsKeys
 	Artifacts         ArtifactsKeys
+	Bookmarks         BookmarksKeys
 }
 
 type NormalKeys struct {
 	Next, Prev, Section, PageDown, PageUp                   key.Binding
 	Notifications, Help, Compose, ChatSearch, Search        key.Binding
 	Sleep, Messages, Favourite, Presence, ChannelHide, Quit key.Binding
-	Actions                                                 key.Binding
+	Actions, Bookmarks                                      key.Binding
 }
 
 type ComposeKeys struct {
@@ -118,6 +119,10 @@ type ArtifactsKeys struct {
 	YankURL, OpenURL           key.Binding
 }
 
+type BookmarksKeys struct {
+	Close, Next, Prev, Confirm key.Binding
+}
+
 func bind(keys ...string) key.Binding {
 	return key.NewBinding(key.WithKeys(keys...))
 }
@@ -143,6 +148,7 @@ func DefaultKeyMap() KeyMap {
 			ChannelHide:   bind("h"),
 			Quit:          bind("q"),
 			Actions:       bind("a"),
+			Bookmarks:     bind("b"),
 		},
 		Compose: ComposeKeys{
 			Cancel:     bind("esc"),
@@ -279,6 +285,12 @@ func DefaultKeyMap() KeyMap {
 			YankURL: bind("y"),
 			OpenURL: bind("o"),
 		},
+		Bookmarks: BookmarksKeys{
+			Close:   bind("esc", "q", "b"),
+			Next:    bind("j", "down"),
+			Prev:    bind("k", "up"),
+			Confirm: bind("enter"),
+		},
 	}
 }
 
@@ -334,6 +346,7 @@ func (k *KeyMap) slots(mode string) []keySlot {
 			{"presence", "", &n.Presence},
 			{"channel_hide", "", &n.ChannelHide},
 			{"actions", "", &n.Actions},
+			{"bookmarks", "", &n.Bookmarks},
 		}
 	case "compose":
 		c := &k.Compose
@@ -504,6 +517,14 @@ func (k *KeyMap) slots(mode string) []keySlot {
 			{"yank_url", sharedYankURL, &c.YankURL},
 			{"open_url", sharedOpenURL, &c.OpenURL},
 		}
+	case "bookmarks":
+		c := &k.Bookmarks
+		return []keySlot{
+			{"close", sharedClose, &c.Close},
+			{"next", sharedNext, &c.Next},
+			{"prev", sharedPrev, &c.Prev},
+			{"confirm", sharedConfirm, &c.Confirm},
+		}
 	default:
 		return nil
 	}
@@ -513,7 +534,7 @@ var modeNames = []string{
 	"normal", "compose", "mention", "message", "message_view", "reaction",
 	"delete_confirm", "url_list", "search_input", "search_results",
 	"chat_search_input", "chat_search_results", "help", "presence", "profile",
-	"filepicker", "chat_actions", "artifacts",
+	"filepicker", "chat_actions", "artifacts", "bookmarks",
 }
 
 var sharedNames = []string{

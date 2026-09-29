@@ -111,6 +111,28 @@ func TestResolveKeyMapChatActionsOverlay(t *testing.T) {
 	}
 }
 
+func TestResolveKeyMapBookmarksOverlay(t *testing.T) {
+	km, warns := ResolveKeyMap([]byte(`{
+		"normal": {"bookmarks": ["x"]},
+		"bookmarks": {"close": ["esc", "q"]}
+	}`))
+	if len(warns) != 0 {
+		t.Fatalf("unexpected warnings: %v", warns)
+	}
+	if got := km.Normal.Bookmarks.Keys(); !sameKeys(got, []string{"x"}) {
+		t.Fatalf("normal.bookmarks = %v", got)
+	}
+	if got := km.Bookmarks.Close.Keys(); !sameKeys(got, []string{"esc", "q"}) {
+		t.Fatalf("bookmarks.close = %v", got)
+	}
+	if got := km.Bookmarks.Confirm.Keys(); !sameKeys(got, []string{"enter"}) {
+		t.Fatalf("confirm should keep default, got %v", got)
+	}
+	if got := km.Normal.Actions.Keys(); !sameKeys(got, []string{"a"}) {
+		t.Fatalf("actions should stay a, got %v", got)
+	}
+}
+
 func sameKeys(got, want []string) bool {
 	if len(got) != len(want) {
 		return false

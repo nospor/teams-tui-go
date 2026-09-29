@@ -207,6 +207,12 @@ type App struct {
 	ChatActionSelectedIndex int
 	ExportDirectory         string // destination for Markdown chat exports
 
+	// ── Chat bookmarks (sidebar filter) ──────────────────────────────────
+	ChatBookmarkPopupMode     bool
+	ChatBookmarkSelectedIndex int
+	ActiveChatFilter          ChatListFilter
+	ActiveChatBookmark        string
+
 	// ── Recordings / transcripts popup ───────────────────────────────────
 	ArtifactPopupMode     bool
 	ArtifactSelectedIndex int
@@ -269,6 +275,7 @@ func NewApp() *App {
 		MentionCanceledStartIndex: -1,
 		Keys:                      DefaultKeyMap(),
 		ExportDirectory:           "~/Downloads",
+		ActiveChatFilter:          newChatListFilter(),
 	}
 }
 

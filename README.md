@@ -25,6 +25,7 @@ Authenticates via **OAuth2 Device Code Flow** (no browser redirect needed), fetc
 - 🔍 Search History — search messages in the current chat (`/`) with literal/regexp components, recursively loading history in the background
 - 🔍 Chat Search & Open — press `c` to search chat titles, participants, and loaded messages, including chats outside the sidebar limit; open/start a 1:1 chat by entering a UPN/email
 - ⭐ Favourites — pin any chat to the top of the sidebar with `f`; favourites are sorted alphabetically and stay anchored regardless of activity
+- 📑 Bookmarks — press `b` to filter the sidebar (unread, today, favourites, 1:1, groups, meetings, …) without dropping chats from memory
 - ❓ Help Popup — press `?` at any time to show a keyboard shortcuts reference with optional feature status
 
 - 🔵 Unread Indicators — chats with new messages are marked with a dot (●) and bold text
@@ -419,6 +420,7 @@ If two actions in the same mode are given the same key, the one you set explicit
 | `messages`      | `m`           | Select a message                      |
 | `favourite`     | `f`           | Toggle favourite                      |
 | `actions`       | `a`           | Open chat actions popup               |
+| `bookmarks`     | `b`           | Filter the sidebar with a bookmark    |
 | `presence`      | `p`           | Chat presence                         |
 | `channel_hide`  | `h`           | Hide or unhide a channel              |
 | `quit`          | `q`           | Quit (`ctrl+c` always quits too)      |
@@ -602,6 +604,17 @@ Opened from chat actions. Lists recordings and transcripts already loaded in thi
 | `yank_url` | `y` | Copy the link |
 | `open_url` | `o` | Open in the browser |
 | `close` | `esc`, `q` | Close the popup |
+
+### bookmarks
+
+Opened with `normal.bookmarks` (`b`). Filters the visible sidebar only; the full chat set stays loaded. Press the preset key (`u`, `t`, `f`, …) or highlight a row and press Enter. `a` clears the filter. This is not the same as `f` pin-favourites.
+
+| Action | Default keys | What it does |
+| --- | --- | --- |
+| `next` | `j`, `down` | Next preset |
+| `prev` | `k`, `up` | Previous preset |
+| `confirm` | `enter` | Apply the highlighted preset |
+| `close` | `esc`, `q`, `b` | Close the popup |
 
 ---
 

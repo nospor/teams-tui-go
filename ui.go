@@ -296,6 +296,11 @@ type Model struct {
 	// Loaded from and persisted to favourites.json in the app config dir.
 	favourites map[string]bool
 
+	// chatListCache is the unfiltered chat set used by rebuildChatList.
+	// app.Chats is the visible sidebar after bookmarks; this map keeps chats
+	// that a filter currently hides so favourites and later rebuilds still see them.
+	chatListCache map[string]Chat
+
 	// unhiddenChannels holds channel IDs that are unhidden by the user.
 	// Loaded from and persisted to unhidden_channels.json in the app config dir.
 	unhiddenChannels map[string]bool
@@ -409,6 +414,7 @@ func NewModel(app *App, clientID, userID string) Model {
 		pendingEdits:         make(map[string]string),
 		favourites:           make(map[string]bool),
 		unhiddenChannels:     make(map[string]bool),
+		chatListCache:        make(map[string]Chat),
 		originalTeamIndex:    make(map[string]int),
 		originalChannelIndex: make(map[string]int),
 		focused:              true,
@@ -1738,6 +1744,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if m.app.ChatActionPopupMode {
 		return m.handleChatActionPopupKey(msg)
 	}
+	if m.app.ChatBookmarkPopupMode {
+		return m.handleChatBookmarkPopupKey(msg)
+	}
 	if m.app.ArtifactPopupMode {
 		return m.handleConversationArtifactPopupKey(msg)
 	}
@@ -1868,6 +1877,9 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 	case pressed(msg, k.Actions):
 		return m.openChatActionPopup(), nil
+
+	case pressed(msg, k.Bookmarks):
+		return m.openChatBookmarkPopup(), nil
 
 	case pressed(msg, k.Compose):
 		return m.startCompose()
@@ -3057,6 +3069,29 @@ func (m Model) renderView() string {
 		}
 		modal := m.renderChatActionPopup(popupW, popupH)
 		result = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
+	} else if m.app.ChatBookmarkPopupMode {
+		popupW := m.width * 55 / 100
+		popupH := m.height * 70 / 100
+		if popupW < 48 {
+			popupW = 48
+		}
+		if popupH < 16 {
+			popupH = 16
+		}
+		if maxW := m.width - 2; maxW > 0 && popupW > maxW {
+			popupW = maxW
+		}
+		if maxH := m.height - 2; maxH > 0 && popupH > maxH {
+			popupH = maxH
+		}
+		if popupW < 1 {
+			popupW = m.width
+		}
+		if popupH < 8 {
+			popupH = m.height
+		}
+		modal := m.renderChatBookmarkPopup(popupW, popupH)
+		result = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
 	} else if m.app.ArtifactPopupMode {
 		popupW := m.width * 70 / 100
 		popupH := m.height * 80 / 100
@@ -3566,6 +3601,9 @@ func (m Model) renderChatList(w, h int) string {
 			FormatKeys(nk.Actions, "/"),
 			FormatKeys(nk.Quit, "/"),
 		)
+	}
+	if name := m.app.ActiveChatBookmark; name != "" && chatFilterIsActive(m.app.ActiveChatFilter) {
+		titleText = name + " · " + titleText
 	}
 	title := dimLine(titleText, w)
 
@@ -4535,15 +4573,25 @@ func (m Model) mergeChats(fresh []Chat) Model {
 }
 
 func (m Model) rebuildChatList() Model {
-	byID := make(map[string]Chat)
-	// Retain previously loaded chats so they don't disappear from the UI
+	selectedID := ""
+	previousIndex := m.app.SelectedIndex
+	if chat := m.app.GetSelectedChat(); chat != nil {
+		selectedID = chat.ID
+	}
+
+	if m.chatListCache == nil {
+		m.chatListCache = make(map[string]Chat)
+	}
+	// Retain previously loaded chats so they don't disappear from the UI.
+	// Seed from the visible list and the API snapshot; hidden (filtered)
+	// chats stay in chatListCache so a later rebuild can show them again.
 	for _, c := range m.app.Chats {
-		byID[c.ID] = c
+		m.chatListCache[c.ID] = c
 	}
-	// Overwrite/add with fresh chat list data from the API
 	for _, c := range m.latestChats {
-		byID[c.ID] = c
+		m.chatListCache[c.ID] = c
 	}
+	byID := m.chatListCache
 
 	// Split into favourites and non-favourites.
 	var favChats []Chat
@@ -4589,7 +4637,41 @@ func (m Model) rebuildChatList() Model {
 		return strings.ToLower(namei) < strings.ToLower(namej)
 	})
 
-	m.app.Chats = append(favChats, normalChats...)
+	orderedChats := append(favChats, normalChats...)
+	visibleChats := make([]Chat, 0, len(orderedChats))
+	visibleIDs := make(map[string]bool, len(orderedChats))
+	for _, chat := range orderedChats {
+		if visibleIDs[chat.ID] {
+			continue
+		}
+		if !m.chatMatchesFilter(chat, m.app.ActiveChatFilter) {
+			continue
+		}
+		visibleIDs[chat.ID] = true
+		visibleChats = append(visibleChats, chat)
+	}
+	m.app.Chats = visibleChats
+
+	if len(visibleChats) == 0 {
+		m.app.SelectedIndex = -1
+		return m
+	}
+	if selectedID != "" {
+		for i, chat := range visibleChats {
+			if chat.ID == selectedID {
+				m.app.SelectedIndex = i
+				return m
+			}
+		}
+	}
+	if previousIndex < 0 {
+		m.app.SelectedIndex = -1
+		return m
+	}
+	if previousIndex >= len(visibleChats) {
+		previousIndex = len(visibleChats) - 1
+	}
+	m.app.SelectedIndex = previousIndex
 	return m
 }
 
@@ -6151,6 +6233,7 @@ func (m Model) getHelpContentLines() []string {
 	fp := m.app.Keys.FilePicker
 	actions := m.app.Keys.ChatActions
 	art := m.app.Keys.Artifacts
+	bookmarks := m.app.Keys.Bookmarks
 	hk := func(b key.Binding) string { return FormatKeys(b, " / ") }
 
 	sections := []struct {
@@ -6167,6 +6250,7 @@ func (m Model) getHelpContentLines() []string {
 			{hk(n.Search), "Search message history in the current chat"},
 			{hk(n.Favourite), "Toggle favourite (chats only)"},
 			{hk(n.Actions), "Open chat actions (compose, favourite, export)"},
+			{hk(n.Bookmarks), "Filter the sidebar with a bookmark preset"},
 			{hk(n.ChannelHide), "Toggle hide/unhide channel (channels only)"},
 			{hk(n.Presence), "Presence status of chat participants (chats only, feature: presence_enabled)"},
 			{hk(n.Notifications), "Cycle notification mode"},
@@ -6268,6 +6352,15 @@ func (m Model) getHelpContentLines() []string {
 			{hk(art.Confirm) + " / " + hk(art.YankURL), "Copy the selected recording or transcript URL"},
 			{hk(art.OpenURL), "Open the selected recording or transcript"},
 			{hk(art.Close), "Close the popup"},
+		}},
+		{"Bookmarks (" + hk(n.Bookmarks) + ")", [][2]string{
+			{hk(bookmarks.Next) + " / " + hk(bookmarks.Prev), "Move between presets"},
+			{hk(bookmarks.Confirm), "Apply the highlighted preset"},
+			{"a", "All (clear the filter)"},
+			{"u / r", "Unread / read"},
+			{"t / 2 / w", "Today / last 24 hours / last 7 days"},
+			{"f / d / g / m", "Favourites / 1:1 / groups / meetings"},
+			{hk(bookmarks.Close), "Close the popup"},
 		}},
 	}
 

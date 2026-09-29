@@ -48,7 +48,7 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
 - `NotificationMode` enum is JSON-serialised as a string ("None", "Console", "System", "Both")
 - `CurrentUserName` is used for filtering and message alignment; it is **not displayed in the UI**
 - `FeatureFlags` struct (populated once at startup in `main.go` from `ResolveFeatureXxx()`) exposes booleans for each optional feature. **Always read feature state from `app.Features`** — never call `ResolveFeatureXxx()` inside the Bubble Tea event loop.
-- New optional-feature popup / state fields on `App`: `PresencePopupMode`, `PresenceData`, `PresenceLoading`, `PresenceUserName`; `UserProfilePopupMode`, `UserProfileData`, `UserProfileLoading`; `AttachmentCursorMode`, `AttachmentSelectedIndex`; `TeamsData []TeamWithChannels`, `TeamsDataLoading`, `SelectedChannelTeamID`, `SelectedChannelID`; `HelpPopupMode`; `ChatActionPopupMode`, `ChatActionSelectedIndex`; `MentionPopupMode`, `MentionSearch`, `MentionSelectedIndex`, `MentionSuggestions`, `MentionStartIndex`, `TeamMembersCache`.
+- New optional-feature popup / state fields on `App`: `PresencePopupMode`, `PresenceData`, `PresenceLoading`, `PresenceUserName`; `UserProfilePopupMode`, `UserProfileData`, `UserProfileLoading`; `AttachmentCursorMode`, `AttachmentSelectedIndex`; `TeamsData []TeamWithChannels`, `TeamsDataLoading`, `SelectedChannelTeamID`, `SelectedChannelID`; `HelpPopupMode`; `ChatActionPopupMode`, `ChatActionSelectedIndex`; `ChatBookmarkPopupMode`, `ChatBookmarkSelectedIndex`, `ActiveChatFilter`, `ActiveChatBookmark`; `MentionPopupMode`, `MentionSearch`, `MentionSelectedIndex`, `MentionSuggestions`, `MentionStartIndex`, `TeamMembersCache`.
 - **Teams Channels**: `TeamsData` is `[]TeamWithChannels` (loaded once at startup via `loadTeamsChannelsCmd` fired from `Init()`). The sidebar shows a `── Teams ──` divider below chats; `Model.channelSelectedIndex` (-1 = chat mode, ≥0 = channel index into `allChannels()`) drives navigation. Pressing `j` at the last chat enters channel mode; `k` at index 0 exits back to chats. Selecting a channel fires `loadChannelMessagesCmd` and displays messages in the right panel; `MsgChannelMessagesLoaded` populates `app.Messages`. `SelectedChannelTeamID`/`SelectedChannelID` track the active channel (`""` = chat mode).
 
 ### UI (`ui.go`)
@@ -70,6 +70,11 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
   - `promoteChat()` is a no-op for favourited chats so new messages don't displace them
   - Favourited chats with old/unloaded activity still show up once their data is in `byID` cache
   - The `★` icon appears before the chat type tag in the sidebar (yellow for non-selected, inline for selected)
+- **Bookmarks**:
+  - Activated by `b` (`normal.bookmarks`) in normal mode. `ChatBookmarkPopupMode` overlay; keys live in `app.Keys.Bookmarks` (close includes `b` by default).
+  - Presets (`a` all, `u` unread, `r` read, `t` today, `2` last 24h, `w` last 7 days, `f` favourites, `d` 1:1, `g` groups, `m` meetings) set `ActiveChatFilter` and rebuild the **visible** sidebar only.
+  - `latestChats` / `chatListCache` keep the full chat set. `rebuildChatList()` applies `chatMatchesFilter` after favourites + stable order, then restores selection **by chat ID**.
+  - `f` still pin-favourites; the `f` bookmark only hides non-favourited chats. No snooze preset, no `v` filter form, no custom `config.json` bookmark list.
 - **Read Logic**:
   - `lastMsgID` and `lastMsgTime` track latest content
   - `lastReadMsgID` tracks what was read locally in this session
@@ -121,6 +126,8 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
   - Actions: compose, favourite, export complete Markdown transcript, choose a recording or transcript. Export and recordings/transcripts are bound only in this mode (`e` / `t` by default).
   - Labels must use `FormatKeys`. Close with `esc`/`q`; `j`/`k`/`enter` navigate and run.
   - Export follows every Graph next-link via `GetAllChatMessages` in `export.go`, writes under `export_directory` (default `~/Downloads`), and returns `MsgChatExported`.
+- **Bookmarks Popup**:
+  - Activated by `b` (`normal.bookmarks`). Handled by `handleChatBookmarkPopupKey` / `renderChatBookmarkPopup` in `bookmarks.go`. Closed with `esc`/`q`/`b`.
 - **Recordings / transcripts popup**:
   - Opened from chat actions (`t`). Collects `callRecording` / `callTranscript` events from loaded cache, history, and the current message list (`conversation_artifacts.go`).
   - Recordings prefer `eventDetail.callRecordingUrl`; transcripts fall back to the message or chat `webUrl`. `Enter`/`y` copy the link; `o` opens it. The list is clipped to the popup height so the footer and border stay visible.
