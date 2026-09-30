@@ -91,7 +91,9 @@ func (m Model) jumpFilePickerToDirectory(path string) (Model, tea.Cmd) {
 	m = m.closeFilePickerZoxide()
 	m.filepicker.CurrentDirectory = path
 	_ = SaveFilepickerSettings(m.filepicker.SortBy.String(), m.filepicker.SortOrder.String(), m.filepicker.CurrentDirectory)
-	return m, m.filepicker.Init()
+	var cmd tea.Cmd
+	m.filepicker, cmd = m.filepicker.ScheduleReadDir()
+	return m, cmd
 }
 
 func (m Model) renderFilePickerZoxidePopup(w, h int) string {

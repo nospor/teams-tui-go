@@ -2287,7 +2287,9 @@ func (m Model) handleInputModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case pressed(msg, k.Attach):
 		if m.app.Features.FileUpload {
 			m.app.FilePickerPopupMode = true
-			return m, m.filepicker.Init()
+			var cmd tea.Cmd
+			m.filepicker, cmd = m.filepicker.ScheduleReadDir()
+			return m, cmd
 		}
 		return m, nil
 

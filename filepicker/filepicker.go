@@ -92,6 +92,8 @@ type errorMsg struct {
 
 type readDirMsg struct {
 	id      int
+	seq     int
+	path    string
 	entries []os.DirEntry
 }
 
@@ -214,6 +216,8 @@ type Model struct {
 	Styles    Styles
 	SortBy    SortBy
 	SortOrder SortOrder
+
+	readDirSeq int
 }
 
 type stack struct {
@@ -281,17 +285,82 @@ func (m *Model) sortFiles() {
 	sortEntries(m.files, m.SortBy, m.SortOrder)
 }
 
-func (m Model) readDir(path string, showHidden bool) tea.Cmd {
-	return func() tea.Msg {
+func (m *Model) clampSelection() {
+	n := len(m.files)
+	if n == 0 {
+		m.selected = 0
+		m.min = 0
+		m.max = max(0, m.Height-1)
+		return
+	}
+	if m.selected >= n {
+		m.selected = n - 1
+	}
+	if m.selected < 0 {
+		m.selected = 0
+	}
+	windowEnd := m.Height - 1
+	if windowEnd < 0 {
+		windowEnd = 0
+	}
+	if m.max >= n {
+		m.max = n - 1
+	}
+	if m.min < 0 {
+		m.min = 0
+	}
+	if m.min > m.max {
+		m.min = 0
+		m.max = min(windowEnd, n-1)
+	}
+	if m.selected > m.max {
+		m.max = m.selected
+		m.min = m.max - windowEnd
+		if m.min < 0 {
+			m.min = 0
+		}
+	}
+	if m.selected < m.min {
+		m.min = m.selected
+		m.max = m.min + windowEnd
+		if m.max >= n {
+			m.max = n - 1
+			m.min = m.max - windowEnd
+			if m.min < 0 {
+				m.min = 0
+			}
+		}
+	}
+}
+
+func (m *Model) selectedEntry() (os.DirEntry, bool) {
+	m.clampSelection()
+	if len(m.files) == 0 {
+		return nil, false
+	}
+	return m.files[m.selected], true
+}
+
+// ScheduleReadDir loads CurrentDirectory asynchronously and bumps readDirSeq so
+// stale responses from earlier navigations are ignored.
+func (m Model) ScheduleReadDir() (Model, tea.Cmd) {
+	m.readDirSeq++
+	seq := m.readDirSeq
+	id := m.id
+	path := m.CurrentDirectory
+	showHidden := m.ShowHidden
+	sortBy := m.SortBy
+	sortOrder := m.SortOrder
+	return m, func() tea.Msg {
 		dirEntries, err := os.ReadDir(path)
 		if err != nil {
 			return errorMsg{err}
 		}
 
-		sortEntries(dirEntries, m.SortBy, m.SortOrder)
+		sortEntries(dirEntries, sortBy, sortOrder)
 
 		if showHidden {
-			return readDirMsg{id: m.id, entries: dirEntries}
+			return readDirMsg{id: id, seq: seq, path: path, entries: dirEntries}
 		}
 
 		var sanitizedDirEntries []os.DirEntry
@@ -302,13 +371,14 @@ func (m Model) readDir(path string, showHidden bool) tea.Cmd {
 			}
 			sanitizedDirEntries = append(sanitizedDirEntries, dirEntry)
 		}
-		return readDirMsg{id: m.id, entries: sanitizedDirEntries}
+		return readDirMsg{id: id, seq: seq, path: path, entries: sanitizedDirEntries}
 	}
 }
 
 // Init initializes the file picker model.
 func (m Model) Init() tea.Cmd {
-	return m.readDir(m.CurrentDirectory, m.ShowHidden)
+	_, cmd := m.ScheduleReadDir()
+	return cmd
 }
 
 // SetHeight sets the height of the filepicker.
@@ -326,8 +396,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if msg.id != m.id {
 			break
 		}
+		if msg.seq != m.readDirSeq || msg.path != m.CurrentDirectory {
+			return m, nil
+		}
 		m.files = msg.entries
-		m.max = max(m.max, m.Height-1)
+		m.clampSelection()
 	case tea.WindowSizeMsg:
 		if m.AutoHeight {
 			m.Height = msg.Height - marginBottom
@@ -364,16 +437,20 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.selected = 0
 			m.min = 0
 			m.max = m.Height - 1
-			return m, m.readDir(m.CurrentDirectory, m.ShowHidden)
+			return m.ScheduleReadDir()
 
 		case key.Matches(msg, m.KeyMap.GoToTop):
 			m.selected = 0
 			m.min = 0
 			m.max = m.Height - 1
 		case key.Matches(msg, m.KeyMap.GoToLast):
+			if len(m.files) == 0 {
+				break
+			}
 			m.selected = len(m.files) - 1
 			m.min = len(m.files) - m.Height
 			m.max = len(m.files) - 1
+			m.clampSelection()
 		case key.Matches(msg, m.KeyMap.Down):
 			m.selected++
 			if m.selected >= len(m.files) {
@@ -425,13 +502,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.min = 0
 				m.max = m.Height - 1
 			}
-			return m, m.readDir(m.CurrentDirectory, m.ShowHidden)
+			return m.ScheduleReadDir()
 		case key.Matches(msg, m.KeyMap.Open):
-			if len(m.files) == 0 {
+			f, ok := m.selectedEntry()
+			if !ok {
 				break
 			}
-
-			f := m.files[m.selected]
 			info, err := f.Info()
 			if err != nil {
 				break
@@ -466,7 +542,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.selected = 0
 			m.min = 0
 			m.max = m.Height - 1
-			return m, m.readDir(m.CurrentDirectory, m.ShowHidden)
+			return m.ScheduleReadDir()
 		}
 	}
 	return m, nil
@@ -581,7 +657,10 @@ func (m Model) didSelectFile(msg tea.Msg) (bool, string) {
 
 		// The key press was a selection, let's confirm whether the current file could
 		// be selected or used for navigating deeper into the stack.
-		f := m.files[m.selected]
+		f, ok := m.selectedEntry()
+		if !ok {
+			return false, ""
+		}
 		info, err := f.Info()
 		if err != nil {
 			return false, ""
