@@ -106,7 +106,7 @@ type ProfileKeys struct {
 type FilePickerKeys struct {
 	Next, Prev, PageDown, PageUp    key.Binding
 	Top, Bottom, Back, Open, Select key.Binding
-	Sort, SortOrder, Hidden, Close  key.Binding
+	Sort, SortOrder, Hidden, Zoxide, Close key.Binding
 }
 
 type ChatActionsKeys struct {
@@ -276,6 +276,7 @@ func DefaultKeyMap() KeyMap {
 			Sort:      bind("s", "ctrl+s"),
 			SortOrder: bind("o", "ctrl+o"),
 			Hidden:    bind("."),
+			Zoxide:    bind("z"),
 			Close:     bind("esc", "q"),
 		},
 		ChatActions: ChatActionsKeys{
@@ -522,6 +523,7 @@ func (k *KeyMap) slots(mode string) []keySlot {
 			{"sort", "", &c.Sort},
 			{"sort_order", "", &c.SortOrder},
 			{"hidden", "", &c.Hidden},
+			{"zoxide", "", &c.Zoxide},
 		}
 	case "chat_actions":
 		c := &k.ChatActions

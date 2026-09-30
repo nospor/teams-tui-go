@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -69,6 +70,13 @@ type MsgFileAttached struct {
 	ContentType string
 	Data        []byte
 	Err         error
+}
+
+// MsgZoxideDirsLoaded is sent when zoxide query -l completes for the file picker overlay.
+type MsgZoxideDirsLoaded struct {
+	Query string
+	Paths []string
+	Err   error
 }
 
 // MsgMessagesLoaded is sent when messages for a specific chat have loaded.
@@ -335,7 +343,8 @@ type Model struct {
 	searchChatInventoryLoading bool
 
 	// File picker for browsing/attaching files from computer.
-	filepicker filepicker.Model
+	filepicker  filepicker.Model
+	zoxideInput textinput.Model
 
 	lastWrittenMessages  int
 	lastWrittenReactions int
@@ -407,6 +416,11 @@ func NewModel(app *App, clientID, userID string) Model {
 	fp.Styles.Selected = lipgloss.NewStyle().Foreground(colGreen).Bold(true)
 	fp.Styles.Permission = lipgloss.NewStyle().Foreground(colDimGray)
 
+	zi := textinput.New()
+	zi.Placeholder = "Filter zoxide directories..."
+	zi.CharLimit = 200
+	zi.Width = 40
+
 	m := Model{
 		app:                  app,
 		clientID:             clientID,
@@ -431,6 +445,7 @@ func NewModel(app *App, clientID, userID string) Model {
 		focused:              true,
 		channelSelectedIndex: -1,
 		filepicker:           fp,
+		zoxideInput:          zi,
 		lastWrittenMessages:  -1,
 		lastWrittenReactions: -1,
 		viewCache:            &viewCache{dirty: true},
@@ -1420,6 +1435,28 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 			m.app.SetStatus("Profile unavailable: "+msg.Err.Error(), 4*time.Second)
 		}
 
+	// ── Zoxide directory list ───────────────────────────────────
+	case MsgZoxideDirsLoaded:
+		if !m.app.FilePickerZoxideMode {
+			break
+		}
+		if msg.Query != m.zoxideInput.Value() {
+			break
+		}
+		m.app.FilePickerZoxideLoading = false
+		if msg.Err != nil {
+			m.app.FilePickerZoxidePaths = nil
+			if errors.Is(msg.Err, ErrZoxideNotInstalled) {
+				m.app.FilePickerZoxideError = "zoxide is not installed (no zoxide binary in PATH)"
+			} else {
+				m.app.FilePickerZoxideError = msg.Err.Error()
+			}
+		} else {
+			m.app.FilePickerZoxideError = ""
+			m.app.FilePickerZoxidePaths = msg.Paths
+		}
+		m.clampFilePickerZoxideSelection()
+
 	// ── File downloaded ─────────────────────────────────────────
 	case MsgFileDownloaded:
 		if msg.Err == nil {
@@ -1760,6 +1797,9 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 
 // handleKey processes keyboard input and returns the updated model + command.
 func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
+	if m.app.FilePickerZoxideMode {
+		return m.handleFilePickerZoxideKey(msg)
+	}
 	if m.app.FilePickerPopupMode {
 		return m.handleFilePickerKey(msg)
 	}
@@ -3057,7 +3097,12 @@ func (m Model) renderView() string {
 		if popupH < 15 {
 			popupH = 15
 		}
-		modal := m.renderFilePickerPopup(popupW, popupH)
+		var modal string
+		if m.app.FilePickerZoxideMode {
+			modal = m.renderFilePickerZoxidePopup(popupW, popupH)
+		} else {
+			modal = m.renderFilePickerPopup(popupW, popupH)
+		}
 		result = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
 	} else if m.app.UserSearchPopupMode {
 		popupW := m.width * 85 / 100
@@ -6416,6 +6461,7 @@ func (m Model) getHelpContentLines() []string {
 			{hk(fp.Sort), "Change sort"},
 			{hk(fp.SortOrder), "Change sort order"},
 			{hk(fp.Hidden), "Toggle hidden files"},
+			{hk(fp.Zoxide), "Jump to a zoxide directory"},
 			{hk(fp.Close), "Cancel"},
 		}},
 		{"Chat Actions (" + hk(n.Actions) + ")", [][2]string{
@@ -6535,8 +6581,11 @@ func (m Model) handleFilePickerKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	k := m.app.Keys.FilePicker
 	switch {
 	case pressed(msg, k.Close):
+		m.app.FilePickerZoxideMode = false
 		m.app.FilePickerPopupMode = false
 		return m, nil
+	case pressed(msg, k.Zoxide):
+		return m.openFilePickerZoxide()
 	}
 
 	var cmd tea.Cmd
@@ -6548,6 +6597,7 @@ func (m Model) handleFilePickerKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 	if didSelect, path := m.filepicker.DidSelectFile(msg); didSelect {
 		_ = SaveFilepickerSettings(m.filepicker.SortBy.String(), m.filepicker.SortOrder.String(), m.filepicker.CurrentDirectory)
+		m.app.FilePickerZoxideMode = false
 		m.app.FilePickerPopupMode = false
 		m.app.SkipTextareaUpdate = true
 		return m, tea.Batch(cmd, attachFileFromFilepathCmd(path))
@@ -7223,11 +7273,12 @@ func (m Model) renderFilePickerPopup(w, h int) string {
 	lines = append(lines, m.filepicker.View())
 
 	fpk := m.app.Keys.FilePicker
-	footer := dimStyle.Italic(true).Render(fmt.Sprintf("%s: Navigate • %s: Change Sort • %s: Change Order • %s: Toggle Hidden • %s: Attach • %s: Cancel",
+	footer := dimStyle.Italic(true).Render(fmt.Sprintf("%s: Navigate • %s: Change Sort • %s: Change Order • %s: Toggle Hidden • %s: Zoxide jump • %s: Attach • %s: Cancel",
 		slashKeys(fpk.Next, fpk.Prev),
 		FormatKeys(fpk.Sort, "/"),
 		FormatKeys(fpk.SortOrder, "/"),
 		FormatKeys(fpk.Hidden, "/"),
+		FormatKeys(fpk.Zoxide, "/"),
 		FormatKeys(fpk.Select, "/"),
 		FormatKeys(fpk.Close, "/"),
 	))

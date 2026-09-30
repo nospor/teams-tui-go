@@ -632,6 +632,14 @@ func openURLCmd(url, browserCmd, youtrackCmd, gitlabCmd string) tea.Cmd {
 	})
 }
 
+// loadZoxideDirsCmd runs zoxide query -l for the file picker directory jump overlay.
+func loadZoxideDirsCmd(query string) tea.Cmd {
+	return func() tea.Msg {
+		paths, err := QueryZoxideDirs(query)
+		return MsgZoxideDirsLoaded{Query: query, Paths: paths, Err: err}
+	}
+}
+
 // attachFileFromFilepathCmd asynchronously reads a file from disk, detects its content type,
 // and returns MsgFileAttached.
 func attachFileFromFilepathCmd(path string) tea.Cmd {

@@ -227,6 +227,12 @@ type App struct {
 
 	// ── File Picker popup ────────────────────────────────────────────────
 	FilePickerPopupMode bool
+	// FilePickerZoxideMode: overlay to jump the file browser via `zoxide query -l`.
+	FilePickerZoxideMode            bool
+	FilePickerZoxideLoading         bool
+	FilePickerZoxideSelectedIndex   int
+	FilePickerZoxidePaths           []string
+	FilePickerZoxideError           string
 
 	// ── Composed images (pasted from clipboard) ──────────────────────────
 	ComposedImages     []PastedImage
