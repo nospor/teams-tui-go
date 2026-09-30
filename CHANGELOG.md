@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.3.6] - 2026-09-30
+
+### Features
+
+- *(filepicker)* **Add zoxide directory jump in attach file browser** - ([b4c8782](https://github.com/nospor/teams-tui-go/commit/b4c8782a225a67e291c7d0b8a19af04dbaaba735))
+
+
+
+### Bug Fixes
+
+- **Fix file picker panic when directory listing shrinks during navigation.** - ([1a6d4cb](https://github.com/nospor/teams-tui-go/commit/1a6d4cbe219807fe2a81f841cdf74d5db78a5415))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.3.5 [skip ci]** - ([46d9ce0](https://github.com/nospor/teams-tui-go/commit/46d9ce07d591bbf82378f1bc5bc8a394eaab7248))
+
+
+
 ## [1.3.5] - 2026-09-29
 
 ### Bug Fixes
