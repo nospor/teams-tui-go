@@ -193,17 +193,22 @@ const appDirName = "teams-tui-go"
 // defaultClientID is the Microsoft Teams client ID fallback.
 const defaultClientID = "d3590ed6-52b3-4102-aeff-aad2292ab01c"
 
+// defaultNotificationSoundFile is the Linux freedesktop message sound used by paplay.
+const defaultNotificationSoundFile = "/usr/share/sounds/freedesktop/stereo/message-new-instant.oga"
+
 // Config holds persistent application settings.
 type Config struct {
-	ClientID                *string           `json:"client_id,omitempty"`
-	NotificationMode        *NotificationMode `json:"notification_mode,omitempty"`
-	NotificationShowPreview *bool             `json:"notification_show_preview,omitempty"`
-	NotificationPreviewLen  *int              `json:"notification_preview_len,omitempty"`
-	MessageLimit            *int              `json:"message_limit,omitempty"`
-	SearchContextLimit      *int              `json:"search_context_limit,omitempty"`
-	ChatLimit               *int              `json:"chat_limit,omitempty"`
-	ChatIconTheme           *string           `json:"chat_icon_theme,omitempty"`
-	CustomChatIcons         map[string]string `json:"custom_chat_icons,omitempty"`
+	ClientID                 *string           `json:"client_id,omitempty"`
+	NotificationMode         *NotificationMode `json:"notification_mode,omitempty"`
+	NotificationShowPreview  *bool             `json:"notification_show_preview,omitempty"`
+	NotificationPreviewLen   *int              `json:"notification_preview_len,omitempty"`
+	NotificationSoundEnabled *bool             `json:"notification_sound_enabled,omitempty"`
+	NotificationSoundFile    *string           `json:"notification_sound_file,omitempty"`
+	MessageLimit             *int              `json:"message_limit,omitempty"`
+	SearchContextLimit       *int              `json:"search_context_limit,omitempty"`
+	ChatLimit                *int              `json:"chat_limit,omitempty"`
+	ChatIconTheme            *string           `json:"chat_icon_theme,omitempty"`
+	CustomChatIcons          map[string]string `json:"custom_chat_icons,omitempty"`
 
 	// Optional feature flags — each defaults to false (disabled).
 	// When enabled, the corresponding Graph API permission must be granted
@@ -317,6 +322,16 @@ func InitConfig() {
 	if cfg.NotificationPreviewLen == nil {
 		length := 50
 		cfg.NotificationPreviewLen = &length
+		modified = true
+	}
+	if cfg.NotificationSoundEnabled == nil {
+		enabled := false
+		cfg.NotificationSoundEnabled = &enabled
+		modified = true
+	}
+	if cfg.NotificationSoundFile == nil {
+		file := defaultNotificationSoundFile
+		cfg.NotificationSoundFile = &file
 		modified = true
 	}
 	if cfg.MessageLimit == nil {

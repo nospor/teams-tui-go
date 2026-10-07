@@ -52,6 +52,12 @@ func TestInitConfig(t *testing.T) {
 	if cfg.NotificationPreviewLen == nil || *cfg.NotificationPreviewLen != 50 {
 		t.Errorf("expected notification preview len 50, got %v", cfg.NotificationPreviewLen)
 	}
+	if cfg.NotificationSoundEnabled == nil || *cfg.NotificationSoundEnabled != false {
+		t.Errorf("expected notification sound enabled false, got %v", cfg.NotificationSoundEnabled)
+	}
+	if cfg.NotificationSoundFile == nil || *cfg.NotificationSoundFile != defaultNotificationSoundFile {
+		t.Errorf("expected notification sound file %q, got %v", defaultNotificationSoundFile, cfg.NotificationSoundFile)
+	}
 	if cfg.MessageLimit == nil || *cfg.MessageLimit != 50 {
 		t.Errorf("expected message limit 50, got %v", cfg.MessageLimit)
 	}
@@ -118,6 +124,12 @@ func TestInitConfig(t *testing.T) {
 	// Missing values must be populated.
 	if updatedCfg.NotificationMode == nil || *updatedCfg.NotificationMode != NotificationNone {
 		t.Errorf("expected default notification mode, got %v", updatedCfg.NotificationMode)
+	}
+	if updatedCfg.NotificationSoundEnabled == nil || *updatedCfg.NotificationSoundEnabled != false {
+		t.Errorf("expected default notification sound enabled false, got %v", updatedCfg.NotificationSoundEnabled)
+	}
+	if updatedCfg.NotificationSoundFile == nil || *updatedCfg.NotificationSoundFile != defaultNotificationSoundFile {
+		t.Errorf("expected default notification sound file, got %v", updatedCfg.NotificationSoundFile)
 	}
 	if updatedCfg.SearchContextLimit == nil || *updatedCfg.SearchContextLimit != 3 {
 		t.Errorf("expected default search context limit 3, got %v", updatedCfg.SearchContextLimit)

@@ -107,11 +107,15 @@ By default the app uses Microsoft's public Teams client ID. To use your own Azur
   {
     "notification_mode": "System",
     "notification_show_preview": true,
-    "notification_preview_len": 80
+    "notification_preview_len": 80,
+    "notification_sound_enabled": true,
+    "notification_sound_file": "/usr/share/sounds/freedesktop/stereo/message-new-instant.oga"
   }
   ```
   - `notification_show_preview`: Set to `true` to include the message content in the desktop notification.
   - `notification_preview_len`: The maximum number of characters to show in the preview.
+  - `notification_sound_enabled`: Linux only. Set to `true` to play a sound with `paplay` when a System/Both desktop notification is sent. Requires `paplay` (PulseAudio or PipeWire). Ignored on macOS and Windows.
+  - `notification_sound_file`: Path to the `.oga`/`.ogg`/`.wav` file played by `paplay`. Default is `/usr/share/sounds/freedesktop/stereo/message-new-instant.oga`. `~/` is expanded. An empty path skips playback.
 
 ### Message Limit
 Configure how many messages to fetch when opening a chat in `~/.config/teams-tui-go/config.json`:

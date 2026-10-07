@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -676,7 +677,7 @@ func attachFileFromFilepathCmd(path string) tea.Cmd {
 // ---------------------------------------------------------------------------
 
 // sendDesktopNotification sends a native desktop notification.
-func sendDesktopNotification(senderName string, body string) {
+func sendDesktopNotification(senderName string, body string, soundEnabled bool, soundFile string) {
 	title := "TeamsTUI: New Message"
 	if senderName != "" {
 		title = "TeamsTUI: " + senderName
@@ -689,6 +690,28 @@ func sendDesktopNotification(senderName string, body string) {
 
 	beeep.AppName = "TeamsTUI"
 	_ = beeep.Notify(title, finalBody, "")
+	playLinuxNotificationSound(soundEnabled, soundFile)
+}
+
+// playLinuxNotificationSound plays a notification sound with paplay.
+// Linux only; other platforms and missing paplay/files are ignored.
+func playLinuxNotificationSound(enabled bool, soundFile string) {
+	if !enabled || runtime.GOOS != "linux" {
+		return
+	}
+	soundFile = strings.TrimSpace(soundFile)
+	if soundFile == "" {
+		return
+	}
+	if strings.HasPrefix(soundFile, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			soundFile = filepath.Join(home, soundFile[2:])
+		}
+	}
+	if _, err := exec.LookPath("paplay"); err != nil {
+		return
+	}
+	_ = exec.Command("paplay", soundFile).Start()
 }
 
 // ---------------------------------------------------------------------------
@@ -831,6 +854,12 @@ func main() {
 		}
 		if cfg.NotificationPreviewLen != nil {
 			app.NotificationPreviewLen = *cfg.NotificationPreviewLen
+		}
+		if cfg.NotificationSoundEnabled != nil {
+			app.NotificationSoundEnabled = *cfg.NotificationSoundEnabled
+		}
+		if cfg.NotificationSoundFile != nil {
+			app.NotificationSoundFile = *cfg.NotificationSoundFile
 		}
 		if cfg.ChatIconTheme != nil {
 			app.ChatIconTheme = *cfg.ChatIconTheme

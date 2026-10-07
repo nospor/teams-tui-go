@@ -4870,11 +4870,11 @@ func (m *Model) notify(senderName string, msg Message) {
 		fmt.Print("\a") // BEL
 		m.app.TriggerVisualBell()
 	case NotificationSystem:
-		go sendDesktopNotification(senderName, body)
+		go sendDesktopNotification(senderName, body, m.app.NotificationSoundEnabled, m.app.NotificationSoundFile)
 	case NotificationBoth:
 		fmt.Print("\a")
 		m.app.TriggerVisualBell()
-		go sendDesktopNotification(senderName, body)
+		go sendDesktopNotification(senderName, body, m.app.NotificationSoundEnabled, m.app.NotificationSoundFile)
 	}
 }
 
@@ -5832,11 +5832,13 @@ func (m *Model) notifyReaction(chat Chat, msg *Message, newReactions []MessageRe
 		case NotificationSystem:
 			beeep.AppName = "TeamsTUI"
 			_ = beeep.Notify(title, body, "")
+			playLinuxNotificationSound(m.app.NotificationSoundEnabled, m.app.NotificationSoundFile)
 		case NotificationBoth:
 			fmt.Print("\a")
 			m.app.TriggerVisualBell()
 			beeep.AppName = "TeamsTUI"
 			_ = beeep.Notify(title, body, "")
+			playLinuxNotificationSound(m.app.NotificationSoundEnabled, m.app.NotificationSoundFile)
 		}
 	}
 }

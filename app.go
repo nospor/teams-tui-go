@@ -106,6 +106,8 @@ type App struct {
 	NotificationMode            NotificationMode
 	NotificationShowPreview     bool
 	NotificationPreviewLen      int
+	NotificationSoundEnabled    bool
+	NotificationSoundFile       string
 	VisualBellUntil             *time.Time
 	StatusUntil                 *time.Time
 	SearchStatusUntil           *time.Time
@@ -228,11 +230,11 @@ type App struct {
 	// ── File Picker popup ────────────────────────────────────────────────
 	FilePickerPopupMode bool
 	// FilePickerZoxideMode: overlay to jump the file browser via `zoxide query -l`.
-	FilePickerZoxideMode            bool
-	FilePickerZoxideLoading         bool
-	FilePickerZoxideSelectedIndex   int
-	FilePickerZoxidePaths           []string
-	FilePickerZoxideError           string
+	FilePickerZoxideMode          bool
+	FilePickerZoxideLoading       bool
+	FilePickerZoxideSelectedIndex int
+	FilePickerZoxidePaths         []string
+	FilePickerZoxideError         string
 
 	// ── Composed images (pasted from clipboard) ──────────────────────────
 	ComposedImages     []PastedImage
@@ -273,6 +275,8 @@ func NewApp() *App {
 		NotificationMode:          NotificationNone,
 		NotificationShowPreview:   false,
 		NotificationPreviewLen:    50,
+		NotificationSoundEnabled:  false,
+		NotificationSoundFile:     defaultNotificationSoundFile,
 		HistoryMessages:           make(map[string][]Message),
 		HistoryNextLink:           make(map[string]string),
 		HistoryInitialized:        make(map[string]bool),
