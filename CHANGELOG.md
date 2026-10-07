@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.8] - 2026-10-07
+
+### Features
+
+- *(urls)* **Open GitHub links with github_command** - ([dda9322](https://github.com/nospor/teams-tui-go/commit/dda932298db6be5db0c491fd1858add666dd59e6))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.3.7 [skip ci]** - ([9a122ef](https://github.com/nospor/teams-tui-go/commit/9a122ef6269e23d6cfebf59071a856de8d0131a1))
+
+
+
 ## [1.3.7] - 2026-10-07
 
 ### Features
