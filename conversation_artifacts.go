@@ -131,7 +131,7 @@ func (m Model) openSelectedConversationArtifact() (Model, tea.Cmd) {
 	}
 	m.app.ArtifactPopupMode = false
 	m.app.SetStatus("Opening "+string(artifact.Kind)+"…", 3*time.Second)
-	return m, openURLCmd(artifact.URL, m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand)
+	return m, openURLCmd(artifact.URL, m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand, m.app.GithubCommand)
 }
 
 func (m Model) copySelectedConversationArtifact() Model {

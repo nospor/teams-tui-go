@@ -189,6 +189,7 @@ type App struct {
 	ImageViewer           string // command to open images (empty = use default file opener)
 	YoutrackCommand       string // command to open YouTrack URLs
 	GitlabCommand         string // command to open GitLab URLs
+	GithubCommand         string // command to open GitHub URLs
 
 	// ── Mention Popup Autocomplete ───────────────────────────────────────
 	MentionPopupMode          bool

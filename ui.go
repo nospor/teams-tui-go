@@ -2681,7 +2681,7 @@ func (m Model) handleMessageSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 					m.app.SetStatus("No URLs found in message", 3*time.Second)
 				} else if len(urls) == 1 {
 					m.app.MessageSelectionMode = false
-					return m, openURLCmd(urls[0], m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand)
+					return m, openURLCmd(urls[0], m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand, m.app.GithubCommand)
 				} else {
 					m.app.UrlSelectionMode = true
 					m.app.UrlSelectionOpenMode = true
@@ -2871,7 +2871,7 @@ func (m Model) updateUrlSelection(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.app.UrlSelectionMode = false
 		m.app.MessageSelectionMode = false
 		if m.app.UrlSelectionOpenMode {
-			return m, openURLCmd(url, m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand)
+			return m, openURLCmd(url, m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand, m.app.GithubCommand)
 		} else {
 			if err := clipboard.WriteAll(url); err == nil {
 				m.app.SetStatus("URL copied to clipboard", 3*time.Second)
@@ -2894,7 +2894,7 @@ func (m Model) updateUrlSelection(msg tea.KeyMsg) (Model, tea.Cmd) {
 			url := m.app.UrlsInMessage[m.app.UrlSelectedIndex]
 			m.app.UrlSelectionMode = false
 			m.app.MessageSelectionMode = false
-			return m, openURLCmd(url, m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand)
+			return m, openURLCmd(url, m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand, m.app.GithubCommand)
 		}
 	}
 	return m, nil
@@ -2922,7 +2922,7 @@ func (m Model) handleUrlSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.app.UrlSelectionMode = false
 		m.app.MessageSelectionMode = false
 		if m.app.UrlSelectionOpenMode {
-			return m, openURLCmd(url, m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand)
+			return m, openURLCmd(url, m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand, m.app.GithubCommand)
 		} else {
 			if err := clipboard.WriteAll(url); err == nil {
 				m.app.SetStatus("URL copied to clipboard", 3*time.Second)
@@ -2945,7 +2945,7 @@ func (m Model) handleUrlSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			url := m.app.UrlsInMessage[m.app.UrlSelectedIndex]
 			m.app.UrlSelectionMode = false
 			m.app.MessageSelectionMode = false
-			return m, openURLCmd(url, m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand)
+			return m, openURLCmd(url, m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand, m.app.GithubCommand)
 		}
 	}
 	return m, nil
@@ -5640,7 +5640,7 @@ func (m Model) handleSearchPopupNavigationKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				if len(urls) == 0 {
 					m.app.SetSearchStatus("No URLs found in message", 3*time.Second)
 				} else if len(urls) == 1 {
-					return m, openURLCmd(urls[0], m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand)
+					return m, openURLCmd(urls[0], m.app.BrowserCommand, m.app.YoutrackCommand, m.app.GitlabCommand, m.app.GithubCommand)
 				} else {
 					m.app.UrlSelectionMode = true
 					m.app.UrlSelectionOpenMode = true

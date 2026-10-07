@@ -215,12 +215,14 @@ Configure the commands used to open URLs when pressing `o` on a message or from 
   {
     "browser_command": "xdg-open",
     "youtrack_command": "yt-tui",
-    "gitlab_command": "gitlab-tui"
+    "gitlab_command": "gitlab-tui",
+    "github_command": "github-tui"
   }
   ```
   - `browser_command`: The command used to open general URLs (default: `"xdg-open"`, but you can specify e.g. `"firefox"` or `"google-chrome"`). This key is always initialized in `config.json`.
   - `youtrack_command`: The optional command to open YouTrack URLs (default: `"yt-tui"`, but you can specify e.g. `"youtrack-cli"` or `"yt-cli"`). If a URL contains `"youtrack"`, this command is executed. Useful with tools like [yt-tui](https://github.com/nospor/yt-tui).
   - `gitlab_command`: The optional command to open GitLab URLs (default: `"gitlab-tui"`). If a URL contains `"gitlab"` (for example, merge requests, pipelines, or jobs), this command is executed. Useful with tools like [gitlab-tui](https://github.com/nospor/gitlab-tui).
+  - `github_command`: The optional command to open GitHub URLs (default: `"github-tui"`). If a URL contains `"github"` (for example, pull requests or issues), this command is executed. Useful with tools like github-tui.
 
 ### Image Viewer
 Configure a dedicated image viewer used when pressing `Enter` on an image attachment (inside the `v` popup with `Tab` to enter attachment cursor mode).

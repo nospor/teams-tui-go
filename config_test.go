@@ -82,6 +82,9 @@ func TestInitConfig(t *testing.T) {
 	if cfg.GitlabCommand != nil {
 		t.Errorf("expected gitlab command to be nil, got %v", cfg.GitlabCommand)
 	}
+	if cfg.GithubCommand != nil {
+		t.Errorf("expected github command to be nil, got %v", cfg.GithubCommand)
+	}
 
 	// Case 2: Config exists but is missing some options (e.g. partial).
 	// We'll write a custom config with only ClientID and MessageLimit set, and others missing/nil.
@@ -163,6 +166,9 @@ func TestInitConfig(t *testing.T) {
 	}
 	if updatedCfg.GitlabCommand != nil {
 		t.Errorf("expected default gitlab command to be nil, got %v", updatedCfg.GitlabCommand)
+	}
+	if updatedCfg.GithubCommand != nil {
+		t.Errorf("expected default github command to be nil, got %v", updatedCfg.GithubCommand)
 	}
 }
 
@@ -506,6 +512,9 @@ func TestResolveURLCommands(t *testing.T) {
 	if r := ResolveGitlabCommand(); r != "" {
 		t.Errorf("expected ResolveGitlabCommand to resolve to '', got %q", r)
 	}
+	if r := ResolveGithubCommand(); r != "" {
+		t.Errorf("expected ResolveGithubCommand to resolve to '', got %q", r)
+	}
 
 	// Case 2: Config overrides.
 	appDir, err := GetAppDir()
@@ -517,10 +526,12 @@ func TestResolveURLCommands(t *testing.T) {
 	browserVal := "firefox"
 	youtrackVal := "yt-cli"
 	gitlabVal := "gitlab-cli"
+	githubVal := "github-tui"
 	cfg := Config{
 		BrowserCommand:  &browserVal,
 		YoutrackCommand: &youtrackVal,
 		GitlabCommand:   &gitlabVal,
+		GithubCommand:   &githubVal,
 	}
 	data, err := json.Marshal(cfg)
 	if err != nil {
@@ -538,5 +549,8 @@ func TestResolveURLCommands(t *testing.T) {
 	}
 	if r := ResolveGitlabCommand(); r != "gitlab-cli" {
 		t.Errorf("expected ResolveGitlabCommand to resolve to 'gitlab-cli', got %q", r)
+	}
+	if r := ResolveGithubCommand(); r != "github-tui" {
+		t.Errorf("expected ResolveGithubCommand to resolve to 'github-tui', got %q", r)
 	}
 }

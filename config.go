@@ -228,6 +228,7 @@ type Config struct {
 	ImageViewer            *string `json:"image_viewer,omitempty"`
 	YoutrackCommand        *string `json:"youtrack_command,omitempty"`
 	GitlabCommand          *string `json:"gitlab_command,omitempty"`
+	GithubCommand          *string `json:"github_command,omitempty"`
 	ExportDirectory        *string `json:"export_directory,omitempty"`
 	DefaultSnoozeMinutes   *int    `json:"default_snooze_minutes,omitempty"`
 	WorkdayStart           *string `json:"workday_start,omitempty"`
@@ -713,6 +714,17 @@ func ResolveGitlabCommand() string {
 	cfg := LoadConfig()
 	if cfg != nil && cfg.GitlabCommand != nil && *cfg.GitlabCommand != "" {
 		return *cfg.GitlabCommand
+	}
+	return ""
+}
+
+// ResolveGithubCommand returns the github command, using precedence:
+//  1. config.json -> github_command
+//  2. Default ("") - meaning fall back to browser command if not set
+func ResolveGithubCommand() string {
+	cfg := LoadConfig()
+	if cfg != nil && cfg.GithubCommand != nil && *cfg.GithubCommand != "" {
+		return *cfg.GithubCommand
 	}
 	return ""
 }

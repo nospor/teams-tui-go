@@ -602,13 +602,15 @@ func openExternalEditorCmd(currentText, editorCmd string, readOnly bool) tea.Cmd
 }
 
 // openURLCmd launches a command to open the given URL, suspending the TUI if needed.
-func openURLCmd(url, browserCmd, youtrackCmd, gitlabCmd string) tea.Cmd {
+func openURLCmd(url, browserCmd, youtrackCmd, gitlabCmd, githubCmd string) tea.Cmd {
 	lowerURL := strings.ToLower(url)
 	var cmdStr string
 	if strings.Contains(lowerURL, "youtrack") && youtrackCmd != "" {
 		cmdStr = youtrackCmd
 	} else if strings.Contains(lowerURL, "gitlab") && gitlabCmd != "" {
 		cmdStr = gitlabCmd
+	} else if strings.Contains(lowerURL, "github") && githubCmd != "" {
+		cmdStr = githubCmd
 	} else {
 		cmdStr = browserCmd
 	}
@@ -841,6 +843,7 @@ func main() {
 	app.ImageViewer = ResolveImageViewer()
 	app.YoutrackCommand = ResolveYoutrackCommand()
 	app.GitlabCommand = ResolveGitlabCommand()
+	app.GithubCommand = ResolveGithubCommand()
 	app.ExportDirectory = ResolveExportDirectory()
 	app.DefaultSnoozeMinutes = ResolveDefaultSnoozeMinutes()
 	app.WorkdayStart = ResolveWorkdayStart()
