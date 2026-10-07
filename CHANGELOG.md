@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.7] - 2026-10-07
+
+### Features
+
+- *(notifications)* **Play an optional Linux paplay sound with desktop toasts** - ([6a44488](https://github.com/nospor/teams-tui-go/commit/6a44488ef400421d098affa9071ed70ac552eb85))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.3.6 [skip ci]** - ([0c6dfd1](https://github.com/nospor/teams-tui-go/commit/0c6dfd18cc8531af5ba3d3a7deafb8b151122491))
+
+
+
 ## [1.3.6] - 2026-09-30
 
 ### Features
