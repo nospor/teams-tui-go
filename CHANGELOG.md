@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.9] - 2026-10-15
+
+### Features
+
+- *(ui)* **Resume the slept conversation with Enter** - ([a37c16f](https://github.com/nospor/teams-tui-go/commit/a37c16f2e5db6f6c08ed1912beff57e20e0a75bf))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.3.8 [skip ci]** - ([2e5879f](https://github.com/nospor/teams-tui-go/commit/2e5879f29fb3698de736190fd90c93a6c1e4ad72))
+
+
+
 ## [1.3.8] - 2026-10-07
 
 ### Features
