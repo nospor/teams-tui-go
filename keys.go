@@ -37,10 +37,10 @@ type KeyMap struct {
 }
 
 type NormalKeys struct {
-	Next, Prev, Section, PageDown, PageUp                   key.Binding
-	Notifications, Help, Compose, ChatSearch, Search        key.Binding
-	Sleep, Messages, Favourite, Presence, ChannelHide, Quit key.Binding
-	Actions, Bookmarks, Snooze, SnoozeMenu                  key.Binding
+	Next, Prev, Section, PageDown, PageUp                           key.Binding
+	Notifications, Help, Compose, ChatSearch, Search                key.Binding
+	Sleep, Resume, Messages, Favourite, Presence, ChannelHide, Quit key.Binding
+	Actions, Bookmarks, Snooze, SnoozeMenu                          key.Binding
 }
 
 type ComposeKeys struct {
@@ -104,8 +104,8 @@ type ProfileKeys struct {
 }
 
 type FilePickerKeys struct {
-	Next, Prev, PageDown, PageUp    key.Binding
-	Top, Bottom, Back, Open, Select key.Binding
+	Next, Prev, PageDown, PageUp           key.Binding
+	Top, Bottom, Back, Open, Select        key.Binding
 	Sort, SortOrder, Hidden, Zoxide, Close key.Binding
 }
 
@@ -151,6 +151,7 @@ func DefaultKeyMap() KeyMap {
 			ChatSearch:    bind("c"),
 			Search:        bind("/"),
 			Sleep:         bind("esc"),
+			Resume:        bind("enter"),
 			Messages:      bind("m"),
 			Favourite:     bind("f"),
 			Presence:      bind("p"),
@@ -280,15 +281,15 @@ func DefaultKeyMap() KeyMap {
 			Close:     bind("esc", "q"),
 		},
 		ChatActions: ChatActionsKeys{
-			Close:     bind("esc", "q"),
-			Next:      bind("j", "down"),
-			Prev:      bind("k", "up"),
-			Confirm:   bind("enter"),
-			Compose:   bind("i"),
-			Favourite: bind("f"),
-			Export:    bind("e"),
-			Artifacts: bind("t"),
-			Snooze:    bind("z"),
+			Close:      bind("esc", "q"),
+			Next:       bind("j", "down"),
+			Prev:       bind("k", "up"),
+			Confirm:    bind("enter"),
+			Compose:    bind("i"),
+			Favourite:  bind("f"),
+			Export:     bind("e"),
+			Artifacts:  bind("t"),
+			Snooze:     bind("z"),
 			SnoozeMenu: bind("Z"),
 		},
 		Artifacts: ArtifactsKeys{
@@ -366,6 +367,7 @@ func (k *KeyMap) slots(mode string) []keySlot {
 			{"chat_search", "", &n.ChatSearch},
 			{"search", "", &n.Search},
 			{"sleep", "", &n.Sleep},
+			{"resume", "", &n.Resume},
 			{"page_up", sharedPageUp, &n.PageUp},
 			{"page_down", sharedPageDown, &n.PageDown},
 			{"messages", "", &n.Messages},

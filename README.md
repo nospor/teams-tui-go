@@ -20,7 +20,7 @@ Authenticates via **OAuth2 Device Code Flow** (no browser redirect needed), fetc
 - 📋 **Clipboard Image Pasting** — paste images from your system clipboard directly into the compose text field using **Ctrl+V** (automatically base64 encoded and sent as inline HTML attachments)
 - 🗣️ **@Mentions & Autocomplete** — mention users in your messages. Typing `@` displays a dropdown list of chat/channel members. Navigate with Up/Down/Tab/Shift+Tab and press Enter to autocomplete the name. Mentions are sent as native Microsoft Teams mentions.
 - 🔔 Notification modes: None / Console (BEL + visual bell) / System (desktop) / Both
-- 🔄 Smart Background Polling & Sleep Mode — active chat messages poll every 3 s and chat list updates every 15 s. Polling auto-pauses when the terminal window is unfocused (blurred) or when you manually enter sleep mode via the `Esc` key.
+- 🔄 Smart Background Polling & Sleep Mode — active chat messages poll every 3 s and chat list updates every 15 s. Polling auto-pauses when the terminal window is unfocused (blurred) or when you manually enter sleep mode via the `Esc` key. `Enter` reopens the conversation that was open when you went to sleep.
 - 😊 Emoticon Auto-replacement — popular text emoticons (like `:)`, `:D`, `<3`) are automatically converted to Unicode emojis
 - 🔍 Search History — search messages in the current chat (`/`) with literal/regexp components, recursively loading history in the background
 - 🔍 Chat Search & Open — press `c` to search chat titles, participants, and loaded messages, including chats outside the sidebar limit; open/start a 1:1 chat by entering a UPN/email
@@ -438,6 +438,7 @@ If two actions in the same mode are given the same key, the one you set explicit
 | `chat_search`   | `c`           | Search chats and loaded messages      |
 | `search`        | `/`           | Search history                        |
 | `sleep`         | `esc`         | Clear highlights, or enter sleep mode |
+| `resume`        | `enter`       | Reopen the conversation from before sleep |
 | `messages`      | `m`           | Select a message                      |
 | `favourite`     | `f`           | Toggle favourite                      |
 | `actions`       | `a`           | Open chat actions popup               |

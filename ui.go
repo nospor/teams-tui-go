@@ -336,6 +336,14 @@ type Model struct {
 	// -1 means focus is in the chat list (default).
 	channelSelectedIndex int
 
+	// Conversation open when sleep started. Enter restores it by id.
+	// A channel id means channel mode was active; the chat id is the sidebar
+	// chat underneath it, or the open chat when no channel was selected.
+	// A second Esc while already asleep leaves these unchanged.
+	sleepReturnChatID    string
+	sleepReturnTeamID    string
+	sleepReturnChannelID string
+
 	// Transient all-chat inventory for global search (`c`). Not shown in the
 	// sidebar until a result is opened.
 	searchChatInventory        []Chat
@@ -2022,6 +2030,7 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.app.SearchQuery = ""
 			m.app.SetStatus("Highlights cleared.", 3*time.Second)
 		} else {
+			m = m.rememberSleepTarget()
 			m.app.SelectedIndex = -1
 			m.channelSelectedIndex = -1
 			m.app.SelectedChannelTeamID = ""
@@ -2029,8 +2038,15 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.app.Messages = nil
 			m.app.NextLink = ""
 			m.app.SetLoadingMessages(false)
-			m.app.SetStatus("💤 Entered sleep mode. No chat active.", 3*time.Second)
+			if label := m.sleepReturnLabel(); label != "" {
+				m.app.SetStatus(fmt.Sprintf("💤 Sleep. %s returns to %s.", FormatKeys(k.Resume, "/"), label), 4*time.Second)
+			} else {
+				m.app.SetStatus("💤 Entered sleep mode. No chat active.", 3*time.Second)
+			}
 		}
+
+	case pressed(msg, k.Resume):
+		return m.resumeSleep()
 
 	case pressed(msg, k.PageUp):
 		if m.app.SelectedIndex < 0 && m.channelSelectedIndex < 0 {
@@ -3325,7 +3341,17 @@ func (m Model) renderView() string {
 // renderRightPanel renders the messages panel (with optional input area).
 func (m Model) renderRightPanel(w, h int) string {
 	if m.app.SelectedIndex < 0 && m.channelSelectedIndex < 0 {
-		idleMsg := fmt.Sprintf("💤 Sleep Mode\n\nNo chat selected. Polling is paused.\n\nPress %s to select a chat\nand resume polling.", slashKeys(m.app.Keys.Normal.Prev, m.app.Keys.Normal.Next))
+		nav := slashKeys(m.app.Keys.Normal.Prev, m.app.Keys.Normal.Next)
+		var idleMsg string
+		if label := m.sleepReturnLabel(); label != "" {
+			if w > 4 {
+				label = ansi.Truncate(label, w-4, "…")
+			}
+			idleMsg = fmt.Sprintf("💤 Sleep Mode\n\nPolling is paused.\n\n%s returns to\n%s\n\n%s selects another chat",
+				FormatKeys(m.app.Keys.Normal.Resume, "/"), label, nav)
+		} else {
+			idleMsg = fmt.Sprintf("💤 Sleep Mode\n\nNo chat selected. Polling is paused.\n\nPress %s to select a chat\nand resume polling.", nav)
+		}
 		msgContent := lipgloss.Place(w, h-2, lipgloss.Center, lipgloss.Center,
 			lipgloss.NewStyle().Foreground(colDimGray).Align(lipgloss.Center).Render(idleMsg),
 		)
@@ -6384,6 +6410,7 @@ func (m Model) getHelpContentLines() []string {
 			{hk(n.Presence), "Presence status of chat participants (chats only, feature: presence_enabled)"},
 			{hk(n.Notifications), "Cycle notification mode"},
 			{hk(n.Sleep), "Enter sleep / idle mode (stop polling)"},
+			{hk(n.Resume), "Return to the conversation open before sleep"},
 			{hk(n.Help), "Show this help"},
 			{hk(n.PageUp) + " / " + hk(n.PageDown), "Scroll messages up / down"},
 			{hk(n.Quit) + " / Ctrl+C", "Quit (Ctrl+C always quits)"},
@@ -7170,6 +7197,121 @@ func (m Model) rebuildMentionSuggestions() Model {
 	}
 
 	return m
+}
+
+// rememberSleepTarget stores the open conversation before sleep clears the
+// selection. Already-asleep state has nothing selected, so a second Esc keeps
+// the previous target.
+func (m Model) rememberSleepTarget() Model {
+	if m.channelSelectedIndex >= 0 {
+		if entry := m.activeChannelEntry(); entry != nil {
+			m.sleepReturnTeamID = entry.teamID
+			m.sleepReturnChannelID = entry.channelID
+		}
+		if chat := m.app.GetSelectedChat(); chat != nil {
+			m.sleepReturnChatID = chat.ID
+		} else {
+			m.sleepReturnChatID = ""
+		}
+		return m
+	}
+	if chat := m.app.GetSelectedChat(); chat != nil {
+		m.sleepReturnChatID = chat.ID
+		m.sleepReturnTeamID = ""
+		m.sleepReturnChannelID = ""
+	}
+	return m
+}
+
+// sleepReturnLabel is the display name of the conversation Enter will reopen.
+func (m Model) sleepReturnLabel() string {
+	if m.sleepReturnChannelID != "" {
+		for _, entry := range m.allChannels() {
+			if entry.channelID == m.sleepReturnChannelID &&
+				(m.sleepReturnTeamID == "" || entry.teamID == m.sleepReturnTeamID) {
+				return entry.teamName + " » " + entry.channelName
+			}
+		}
+		return ""
+	}
+	if m.sleepReturnChatID == "" {
+		return ""
+	}
+	if chat := m.chatByID(m.sleepReturnChatID); chat != nil && chat.CachedDisplayName != nil {
+		return *chat.CachedDisplayName
+	}
+	return ""
+}
+
+// chatByID looks in the visible sidebar first, then the unfiltered cache.
+func (m Model) chatByID(id string) *Chat {
+	for i := range m.app.Chats {
+		if m.app.Chats[i].ID == id {
+			return &m.app.Chats[i]
+		}
+	}
+	if chat, ok := m.chatListCache[id]; ok {
+		return &chat
+	}
+	return nil
+}
+
+// resumeSleep reopens the conversation that was active when sleep started.
+// Enter outside sleep does nothing. A chat hidden by the current bookmark stays
+// asleep so a stale index cannot open a different row.
+func (m Model) resumeSleep() (Model, tea.Cmd) {
+	if m.app.SelectedIndex >= 0 || m.channelSelectedIndex >= 0 {
+		return m, nil
+	}
+	if m.sleepReturnChannelID != "" {
+		chans := m.allChannels()
+		for i, entry := range chans {
+			if entry.channelID != m.sleepReturnChannelID {
+				continue
+			}
+			if m.sleepReturnTeamID != "" && entry.teamID != m.sleepReturnTeamID {
+				continue
+			}
+			m.channelSelectedIndex = i
+			m.app.SelectedChannelTeamID = entry.teamID
+			m.app.SelectedChannelID = entry.channelID
+			m.app.SnapToBottom = true
+			for j, chat := range m.app.Chats {
+				if chat.ID == m.sleepReturnChatID {
+					m.app.SelectedIndex = j
+					break
+				}
+			}
+			return m.loadChannelMessages(entry.teamID, entry.channelID)
+		}
+		m.app.SetStatus("That channel is no longer in the list.", 4*time.Second)
+		return m, nil
+	}
+	if m.sleepReturnChatID == "" {
+		m.app.SetStatus("No conversation to return to.", 3*time.Second)
+		return m, nil
+	}
+	for i, chat := range m.app.Chats {
+		if chat.ID != m.sleepReturnChatID {
+			continue
+		}
+		m.app.SelectedIndex = i
+		m.channelSelectedIndex = -1
+		m.app.SelectedChannelTeamID = ""
+		m.app.SelectedChannelID = ""
+		m.app.SearchMode = false
+		m.app.SearchActive = false
+		m.app.SearchQuery = ""
+		m.app.SnapToBottom = true
+		m = m.markRead()
+		return m.loadChatMessages(chat.ID)
+	}
+	name := m.sleepReturnLabel()
+	if name == "" {
+		name = "That chat"
+	}
+	m.app.SetStatus(name+" is hidden by the current filter.", 4*time.Second)
+	return m, nil
 }
 
 func (m Model) loadChatMessages(chatID string) (Model, tea.Cmd) {

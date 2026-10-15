@@ -90,7 +90,8 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
 - **Focus Tracking & Sleep/Idle Mode**:
   - Terminal focus reporting enabled via `\x1b[?1004h`; `tea.FocusMsg`/`BlurMsg` update `focused` state.
   - The 3-second message polling for the active chat is automatically paused when the window is blurred (unfocused) or when manually entering sleep mode.
-  - Pressing `Esc` in normal mode manually triggers sleep/idle mode, which de-selects the active chat (`SelectedIndex = -1`, `channelSelectedIndex = -1`), clears messages from memory, pauses active polling, and shows a sleep placeholder screen on the right.
+  - Pressing `Esc` in normal mode manually triggers sleep/idle mode, which de-selects the active chat (`SelectedIndex = -1`, `channelSelectedIndex = -1`), clears messages from memory, pauses active polling, and shows a sleep placeholder screen on the right. The open chat id (or channel team/channel ids, plus the sidebar chat underneath a channel) is stored on the model. A second `Esc` while already asleep keeps that id.
+  - `Enter` (`normal.resume`) while still asleep reopens that conversation by id. `j`/`k` still pick a different row and leave sleep. If a bookmark hid the chat, Enter stays in sleep and says so. Restoring a chat marks it read, same as any other open.
   - Navigating back to a chat/channel or refocusing the window instantly wakes up the polling and pulls the latest messages.
 - Background tasks issued as Bubble Tea `Cmd` functions returning typed messages (`MsgChatsLoaded`, `MsgMessagesLoaded`, `MsgTick`, `MsgSendDone`)
 - **Search Architecture**:
