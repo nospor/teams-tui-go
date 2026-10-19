@@ -7330,7 +7330,11 @@ func getCursorPos(ta textarea.Model) int {
 	for i := 0; i < cursorLine; i++ {
 		pos += len([]rune(lines[i])) + 1
 	}
-	pos += ta.LineInfo().CharOffset
+	// CharOffset is the display width inside the current soft-wrapped row.
+	// StartColumn + ColumnOffset is the rune index on the hard line, which
+	// stays correct when the composer wraps without a real newline.
+	info := ta.LineInfo()
+	pos += info.StartColumn + info.ColumnOffset
 	return pos
 }
 

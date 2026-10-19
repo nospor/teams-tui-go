@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 )
@@ -502,6 +503,91 @@ func TestGetAttachmentSavedName(t *testing.T) {
 				t.Errorf("getAttachmentSavedName() expected unique hash appended, got %q", got)
 			}
 		})
+	}
+}
+
+func newMentionTextarea(width int) textarea.Model {
+	ta := textarea.New()
+	ta.ShowLineNumbers = false
+	ta.Prompt = ""
+	ta.SetWidth(width)
+	return ta
+}
+
+func TestGetCursorPosSoftWrap(t *testing.T) {
+	val := "@Jane hello world this is extra"
+	const underMention = 21 // wrapped row, same visual column as "Jan"
+
+	ta := newMentionTextarea(20)
+	ta.SetValue(val)
+	ta.SetCursor(underMention)
+
+	info := ta.LineInfo()
+	if info.RowOffset == 0 {
+		t.Fatal("expected the cursor to sit on a soft-wrapped row")
+	}
+	if info.CharOffset >= underMention {
+		t.Fatalf("CharOffset = %d, test no longer distinguishes the visual column from the hard-line index", info.CharOffset)
+	}
+
+	got := getCursorPos(ta)
+	if got != underMention {
+		t.Fatalf("getCursorPos() = %d, want %d", got, underMention)
+	}
+	if _, _, ok := getMentionQuery(val, got); ok {
+		t.Fatal("cursor on a wrapped row was treated as being inside the earlier mention")
+	}
+
+	// Cursor exactly at the wrap point used to report column 0.
+	const wrapStart = 18
+	ta.SetCursor(wrapStart)
+	if got := getCursorPos(ta); got != wrapStart {
+		t.Fatalf("getCursorPos() at wrap = %d, want %d", got, wrapStart)
+	}
+}
+
+func TestGetCursorPosMentionOnWrappedRow(t *testing.T) {
+	val := "hello world this is @Jane"
+	ta := newMentionTextarea(20)
+	ta.SetValue(val)
+
+	got := getCursorPos(ta)
+	if got != len([]rune(val)) {
+		t.Fatalf("getCursorPos() = %d, want %d", got, len([]rune(val)))
+	}
+	start, query, ok := getMentionQuery(val, got)
+	if !ok || start != 20 || query != "Jane" {
+		t.Fatalf("getMentionQuery() = (%d, %q, %v), want (20, \"Jane\", true)", start, query, ok)
+	}
+}
+
+func TestGetCursorPosHardNewline(t *testing.T) {
+	val := "@Jane\nplease review this"
+	ta := newMentionTextarea(40)
+	ta.SetValue(val)
+
+	got := getCursorPos(ta)
+	if got != len([]rune(val)) {
+		t.Fatalf("getCursorPos() = %d, want %d", got, len([]rune(val)))
+	}
+	if _, _, ok := getMentionQuery(val, got); ok {
+		t.Fatal("cursor after a newline was treated as being inside the earlier mention")
+	}
+}
+
+func TestGetCursorPosWideRune(t *testing.T) {
+	val := "👍 @ab"
+	ta := newMentionTextarea(40)
+	ta.SetValue(val)
+	ta.SetCursor(3)
+
+	got := getCursorPos(ta)
+	if got != 3 {
+		t.Fatalf("getCursorPos() = %d, want 3", got)
+	}
+	start, query, ok := getMentionQuery(val, got)
+	if !ok || start != 2 || query != "" {
+		t.Fatalf("getMentionQuery() = (%d, %q, %v), want (2, \"\", true)", start, query, ok)
 	}
 }
 
