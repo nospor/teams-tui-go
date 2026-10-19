@@ -91,6 +91,22 @@ func pollReactionsCmd(clientID string, chatIDs []string) tea.Cmd {
 	}
 }
 
+// loadGapMessagesCmd fetches the recent message page for an inactive chat.
+// It always returns a message so a failed fetch frees its concurrency slot.
+func loadGapMessagesCmd(clientID, chatID string) tea.Cmd {
+	return func() tea.Msg {
+		token, err := GetValidTokenSilent(clientID)
+		if err != nil {
+			return MsgGapMessagesLoaded{ChatID: chatID}
+		}
+		msgs, next, err := GetMessages(token, chatID, ResolveMessageLimit())
+		if err != nil {
+			return MsgGapMessagesLoaded{ChatID: chatID}
+		}
+		return MsgGapMessagesLoaded{ChatID: chatID, Messages: msgs, NextLink: next, OK: true}
+	}
+}
+
 // loadMessagesCmd fetches messages for a specific chat in the background.
 func loadMessagesCmd(clientID, chatID string) tea.Cmd {
 	return func() tea.Msg {

@@ -149,6 +149,21 @@ type MsgPollReactionsLoaded struct {
 	Results map[string][]Message
 }
 
+// MsgGapMessagesLoaded is the recent message page for an inactive chat whose
+// lastMessagePreview changed. OK is false when the fetch failed; the chat
+// stays dirty so opening it retries.
+type MsgGapMessagesLoaded struct {
+	ChatID   string
+	Messages []Message
+	NextLink string
+	OK       bool
+}
+
+// maxConcurrentGapFetches caps how many inactive chats fetch a recent message
+// page at once after a chat-list refresh. Only chats whose preview changed
+// are queued.
+const maxConcurrentGapFetches = 5
+
 // MsgPresenceLoaded is sent when a user's presence status has been fetched.
 type MsgPresenceLoaded struct {
 	UserID   string
@@ -290,6 +305,16 @@ type Model struct {
 
 	// Timer tracking for reaction polling.
 	lastReactionPoll time.Time
+
+	// gapFetchQueue lists inactive chats that need a recent message page
+	// because the chat list only reported a new lastMessagePreview.
+	// gapFetchInFlight is the subset currently being fetched.
+	gapFetchQueue    []string
+	gapFetchInFlight map[string]bool
+
+	// pendingBurstNotify holds the cutoff for a chat whose preview changed
+	// and whose notification waits until the recent message page arrives.
+	pendingBurstNotify map[string]burstNotify
 
 	// Track application focus.
 	focused bool
@@ -442,6 +467,8 @@ func NewModel(app *App, clientID, userID string) Model {
 		lastReadReactions:    make(map[string]map[string]bool),
 		reactionsInitialized: make(map[string]bool),
 		notifiedReactions:    make(map[string]map[string]bool),
+		gapFetchInFlight:     make(map[string]bool),
+		pendingBurstNotify:   make(map[string]burstNotify),
 		pendingEdits:         make(map[string]string),
 		favourites:           make(map[string]bool),
 		snoozed:              make(map[string]time.Time),
@@ -670,6 +697,7 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 				continue
 			}
 			prevID, ok := m.lastMsgID[c.ID]
+			prevTime := m.lastMsgTime[c.ID]
 			newID := c.LastMessagePreview.ID
 
 			newTime, _ := time.Parse(time.RFC3339Nano, c.LastMessagePreview.CreatedDateTime)
@@ -682,33 +710,6 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 				m.lastMsgTime[c.ID] = newTime
 				m.app.ChatCacheDirty[c.ID] = true
 
-				// Save/cache the new message immediately so it's visible if we navigate to the chat.
-				m.app.HistoryMessages[c.ID] = mergeHistoryMessages(m.app.HistoryMessages[c.ID], []Message{*c.LastMessagePreview})
-
-				existingCached := m.app.CachedMessages[c.ID]
-				if len(existingCached) > 0 {
-					foundInCache := false
-					for _, cm := range existingCached {
-						if cm.ID == c.LastMessagePreview.ID {
-							foundInCache = true
-							break
-						}
-					}
-					if !foundInCache {
-						existingCached = append([]Message{*c.LastMessagePreview}, existingCached...)
-						sort.Slice(existingCached, func(i, j int) bool {
-							return existingCached[i].CreatedDateTime > existingCached[j].CreatedDateTime
-						})
-						m.app.CachedMessages[c.ID] = existingCached
-					}
-				} else {
-					m.app.CachedMessages[c.ID] = []Message{*c.LastMessagePreview}
-				}
-
-				if m.app.Features.SqliteEnabled {
-					go SaveMessages(c.ID, []Message{*c.LastMessagePreview})
-				}
-
 				// Determine if it was sent by us.
 				isOwnMsg := false
 				if m.app.CurrentUserName != nil && c.LastMessagePreview.From != nil &&
@@ -719,15 +720,21 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 					m.wakeChat(c.ID)
 				}
 
+				// The chat list carries only the newest preview. The open,
+				// focused chat can show that one line immediately; its message
+				// refresh below replaces it with the full page. Every other
+				// chat waits for a recent-page fetch so the cache is not left
+				// holding just the last new message.
+				isSelectedChat := false
 				isActiveChat := false
 				if m.channelSelectedIndex < 0 {
-					if selChat := m.app.GetSelectedChat(); selChat != nil && selChat.ID == c.ID && m.focused {
-						isActiveChat = true
+					if selChat := m.app.GetSelectedChat(); selChat != nil && selChat.ID == c.ID {
+						isSelectedChat = true
+						isActiveChat = m.focused
 					}
 				}
 
 				if isActiveChat {
-					// Append/merge into active messages list as well so it's shown immediately
 					existingMsgs := m.app.Messages
 					foundInActive := false
 					for _, am := range existingMsgs {
@@ -743,6 +750,8 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 						})
 						m.app.Messages = existingMsgs
 					}
+				} else if !isSelectedChat {
+					m = m.enqueueGapFetch(c.ID)
 				}
 
 				if isOwnMsg || isActiveChat {
@@ -762,21 +771,13 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 						m.lastReadMsgID[c.ID] = prevID
 					}
 
-					// Trigger notification.
-					senderName := c.LastMessagePreview.SenderName()
-
-					// Build a temporary Message object for notification.
-					tempMsg := Message{
-						ID:              newID,
-						CreatedDateTime: c.LastMessagePreview.CreatedDateTime,
-						MessageType:     c.LastMessagePreview.MessageType,
-						Subject:         c.LastMessagePreview.Subject,
-						Summary:         c.LastMessagePreview.Summary,
-						From:            c.LastMessagePreview.From,
-						Body:            c.LastMessagePreview.Body,
-						EventDetail:     c.LastMessagePreview.EventDetail,
+					// The preview is only the newest message. Hold the toast until the
+					// recent page arrives so one notification can list the burst.
+					notBefore := prevTime
+					if !ok || prevTime.IsZero() {
+						notBefore = m.app.AppStartTime
 					}
-					m.notify(senderName, tempMsg)
+					m.noteBurstNotify(c.ID, prevID, notBefore, *c.LastMessagePreview)
 					m.promoteChat(c.ID)
 				}
 			} else if !ok || (ok && m.lastMsgTime[c.ID].IsZero()) {
@@ -825,6 +826,10 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 				}
 			}
 		}
+
+		var gapCmd tea.Cmd
+		m, gapCmd = m.drainGapFetches()
+		cmds = append(cmds, gapCmd)
 
 		// Build stable order.
 		m = m.mergeChats(m.latestChats)
@@ -952,6 +957,39 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		}
 
+	// ── Recent page for an inactive chat with a new preview ─────────────
+	case MsgGapMessagesLoaded:
+		if m.gapFetchInFlight != nil {
+			delete(m.gapFetchInFlight, msg.ChatID)
+		}
+		selected := m.app.GetSelectedChat()
+		viewing := m.channelSelectedIndex < 0 && selected != nil && selected.ID == msg.ChatID
+		if msg.OK && len(msg.Messages) > 0 {
+			m = m.updateCachedMessages(msg.ChatID, msg.Messages)
+			m.app.ChatMessagesLoadedOnce[msg.ChatID] = true
+			m.app.ChatCacheDirty[msg.ChatID] = false
+			m.app.CachedNextLink[msg.ChatID] = msg.NextLink
+			if viewing {
+				m.app.NextLink = msg.NextLink
+				m.app.SetLoadingMessages(false)
+				if m.app.SnapToBottom && !m.app.MessageSelectionMode {
+					m.updateScroll()
+				}
+			}
+			m.flushBurstNotify(msg.ChatID, msg.Messages)
+		} else if viewing {
+			// The open path skipped its own fetch because this one was in
+			// flight. Retry now that the slot has failed. The toast waits
+			// for that page.
+			m.app.SetLoadingMessages(true)
+			cmds = append(cmds, loadMessagesCmd(m.clientID, msg.ChatID))
+		} else {
+			m.flushBurstNotify(msg.ChatID, nil)
+		}
+		var gapCmd tea.Cmd
+		m, gapCmd = m.drainGapFetches()
+		cmds = append(cmds, gapCmd)
+
 	// ── Messages loaded ──────────────────────────────────────────────────
 	case MsgMessagesLoaded:
 		// Always update the cache for the chat that was loaded, even if the
@@ -995,6 +1033,10 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 					}
 				}
 			}
+		}
+		_, hadBurst := m.pendingBurstNotify[loadedChatID]
+		if len(msg.Messages) > 0 {
+			m.flushBurstNotify(loadedChatID, msg.Messages)
 		}
 		// Discard UI update if the selected chat changed since we issued the load,
 		// or if we're now viewing a Teams channel instead.
@@ -1086,10 +1128,11 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 
 					if newLastID != "" {
 						old, ok := m.lastMsgID[chat.ID]
-						if !ok || m.lastMsgTime[chat.ID].IsZero() {
+						oldTime := m.lastMsgTime[chat.ID]
+						if !ok || oldTime.IsZero() {
 							m.lastMsgID[chat.ID] = newLastID
 							m.lastMsgTime[chat.ID] = newTime
-						} else if old != newLastID && newTime.After(m.lastMsgTime[chat.ID].Add(time.Second)) {
+						} else if old != newLastID && newTime.After(oldTime.Add(time.Second)) {
 							m.lastMsgID[chat.ID] = newLastID
 							m.lastMsgTime[chat.ID] = newTime
 							m.promoteChat(chat.ID)
@@ -1103,10 +1146,16 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 										return t
 									}(), chat.ID, m.userID)
 								}
-							} else {
-								// Trigger notification if blurred, and mark as unread locally
+							} else if !hadBurst {
+								// Chat-list bursts are notified when their page
+								// arrives. This path is the blurred chat's own
+								// message poll, which already has every new line.
 								m.lastReadMsgID[chat.ID] = old
-								m.notify(latestMsg.SenderName(), latestMsg)
+								fresh := newerMessages(msg.Messages, old, oldTime)
+								if len(fresh) == 0 {
+									fresh = []Message{latestMsg}
+								}
+								m.notifyBurst(chat.ID, fresh)
 							}
 						}
 					}
@@ -4876,32 +4925,206 @@ func stripANSI(s string) string {
 	return re.ReplaceAllString(s, "")
 }
 
+// burstNotify is the cutoff captured when a chat preview changes. The toast
+// waits for the recent page so it can list every message after this point.
+type burstNotify struct {
+	PrevID    string
+	NotBefore time.Time
+	Preview   Message
+}
+
+const maxBurstNotifyLines = 3
+
 // notify triggers the appropriate notification based on the app's mode.
 func (m *Model) notify(senderName string, msg Message) {
 	body := ""
 	if m.app.NotificationShowPreview {
-		if msg.Body != nil && msg.Body.Content != nil {
-			body = stripANSI(HTMLToText(*msg.Body.Content, msg.Attachments, msg.Mentions, m.conversationNameMap()))
-			// Remove newlines and collapse spaces for a cleaner notification body.
-			body = strings.ReplaceAll(body, "\n", " ")
-			body = strings.Join(strings.Fields(body), " ")
-			if m.app.NotificationPreviewLen > 0 && utf8.RuneCountInString(body) > m.app.NotificationPreviewLen {
-				body = string([]rune(body)[:m.app.NotificationPreviewLen]) + "..."
-			}
-		}
+		body = m.messagePreviewText(msg)
 	}
+	m.notifyText(senderName, body)
+}
 
+// notifyText sends one toast. An empty body uses the desktop fallback text.
+func (m *Model) notifyText(title, body string) {
+	if m.app == nil {
+		return
+	}
 	switch m.app.NotificationMode {
 	case NotificationConsole:
 		fmt.Print("\a") // BEL
 		m.app.TriggerVisualBell()
 	case NotificationSystem:
-		go sendDesktopNotification(senderName, body, m.app.NotificationSoundEnabled, m.app.NotificationSoundFile)
+		go sendDesktopNotification(title, body, m.app.NotificationSoundEnabled, m.app.NotificationSoundFile)
 	case NotificationBoth:
 		fmt.Print("\a")
 		m.app.TriggerVisualBell()
-		go sendDesktopNotification(senderName, body, m.app.NotificationSoundEnabled, m.app.NotificationSoundFile)
+		go sendDesktopNotification(title, body, m.app.NotificationSoundEnabled, m.app.NotificationSoundFile)
 	}
+}
+
+func (m *Model) noteBurstNotify(chatID, prevID string, notBefore time.Time, preview Message) {
+	if m.pendingBurstNotify == nil {
+		m.pendingBurstNotify = make(map[string]burstNotify)
+	}
+	if existing, ok := m.pendingBurstNotify[chatID]; ok {
+		existing.Preview = preview
+		m.pendingBurstNotify[chatID] = existing
+		return
+	}
+	m.pendingBurstNotify[chatID] = burstNotify{
+		PrevID:    prevID,
+		NotBefore: notBefore,
+		Preview:   preview,
+	}
+}
+
+// flushBurstNotify sends the one toast for a preview change. Messages newer
+// than the cutoff are listed; if none match, the stored preview is used.
+// A focused view of this chat clears the pending toast without sending it.
+func (m *Model) flushBurstNotify(chatID string, msgs []Message) {
+	if m.pendingBurstNotify == nil {
+		return
+	}
+	pending, ok := m.pendingBurstNotify[chatID]
+	if !ok {
+		return
+	}
+	delete(m.pendingBurstNotify, chatID)
+	if m.focused && m.channelSelectedIndex < 0 && m.app != nil {
+		if sel := m.app.GetSelectedChat(); sel != nil && sel.ID == chatID {
+			return
+		}
+	}
+	fresh := newerMessages(msgs, pending.PrevID, pending.NotBefore)
+	if len(fresh) == 0 && pending.Preview.ID != "" {
+		fresh = []Message{pending.Preview}
+	}
+	m.notifyBurst(chatID, fresh)
+}
+
+func (m *Model) notifyBurst(chatID string, msgs []Message) {
+	if len(msgs) == 0 || m.app == nil {
+		return
+	}
+	ordered := append([]Message(nil), msgs...)
+	sort.Slice(ordered, func(i, j int) bool {
+		return ordered[i].CreatedDateTime < ordered[j].CreatedDateTime
+	})
+	title, body := m.formatBurst(chatID, ordered)
+	m.notifyText(title, body)
+}
+
+func (m *Model) formatBurst(chatID string, msgs []Message) (title, body string) {
+	if len(msgs) == 1 {
+		title = msgs[0].SenderName()
+	}
+	if len(msgs) != 1 || title == "" {
+		if name := m.chatDisplayName(chatID); name != "" {
+			title = name
+		}
+	}
+	if title == "" && len(msgs) > 0 {
+		title = msgs[len(msgs)-1].SenderName()
+	}
+	if len(msgs) > 1 {
+		if title == "" {
+			title = fmt.Sprintf("%d new messages", len(msgs))
+		} else {
+			title = fmt.Sprintf("%s (%d)", title, len(msgs))
+		}
+	}
+	if m.app == nil || !m.app.NotificationShowPreview {
+		if len(msgs) > 1 {
+			return title, fmt.Sprintf("%d new messages", len(msgs))
+		}
+		return title, ""
+	}
+	if len(msgs) == 1 {
+		return title, m.messagePreviewText(msgs[0])
+	}
+	shown := len(msgs)
+	extra := 0
+	if shown > maxBurstNotifyLines {
+		extra = shown - maxBurstNotifyLines
+		shown = maxBurstNotifyLines
+	}
+	lines := make([]string, 0, shown+1)
+	for i := 0; i < shown; i++ {
+		text := m.messagePreviewText(msgs[i])
+		if text == "" {
+			text = "(no text)"
+		}
+		if sender := msgs[i].SenderName(); sender != "" {
+			lines = append(lines, sender+": "+text)
+		} else {
+			lines = append(lines, text)
+		}
+	}
+	if extra > 0 {
+		lines = append(lines, fmt.Sprintf("and %d more", extra))
+	}
+	return title, strings.Join(lines, "\n")
+}
+
+func (m *Model) messagePreviewText(msg Message) string {
+	body := ""
+	if msg.IsSystemEvent() {
+		body = msg.SystemEventSummary()
+	} else if msg.Body != nil && msg.Body.Content != nil {
+		body = stripANSI(HTMLToText(*msg.Body.Content, msg.Attachments, msg.Mentions, m.conversationNameMap()))
+	}
+	body = strings.ReplaceAll(body, "\n", " ")
+	body = strings.Join(strings.Fields(body), " ")
+	if m.app != nil && m.app.NotificationPreviewLen > 0 && utf8.RuneCountInString(body) > m.app.NotificationPreviewLen {
+		body = string([]rune(body)[:m.app.NotificationPreviewLen]) + "..."
+	}
+	return body
+}
+
+func (m Model) chatDisplayName(chatID string) string {
+	nameOf := func(c Chat) string {
+		if c.ID == chatID && c.CachedDisplayName != nil {
+			return *c.CachedDisplayName
+		}
+		return ""
+	}
+	if m.app != nil {
+		for _, c := range m.app.Chats {
+			if name := nameOf(c); name != "" {
+				return name
+			}
+		}
+	}
+	for _, c := range m.latestChats {
+		if name := nameOf(c); name != "" {
+			return name
+		}
+	}
+	if m.chatListCache != nil {
+		if name := nameOf(m.chatListCache[chatID]); name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+// newerMessages returns msgs created after notBefore, excluding prevID, oldest first.
+func newerMessages(msgs []Message, prevID string, notBefore time.Time) []Message {
+	var out []Message
+	for _, msg := range msgs {
+		if prevID != "" && msg.ID == prevID {
+			continue
+		}
+		when, err := time.Parse(time.RFC3339Nano, msg.CreatedDateTime)
+		if err != nil || !when.After(notBefore) {
+			continue
+		}
+		out = append(out, msg)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedDateTime < out[j].CreatedDateTime
+	})
+	return out
 }
 
 func (m Model) chatForSearch(conversationID string) Chat {
@@ -7324,7 +7547,7 @@ func (m Model) loadChatMessages(chatID string) (Model, tea.Cmd) {
 			m.app.SnapToBottom = true
 			if m.app.ChatCacheDirty[chatID] {
 				m.app.SetLoadingMessages(true)
-				return m, loadMessagesCmd(m.clientID, chatID)
+				return m.fetchChatMessages(chatID)
 			}
 			m.app.SetLoadingMessages(false)
 			return m, nil
@@ -7345,7 +7568,7 @@ func (m Model) loadChatMessages(chatID string) (Model, tea.Cmd) {
 			m.app.SnapToBottom = true
 			m.app.ChatMessagesLoadedOnce[chatID] = true
 			// Still fetch the latest messages in the background to update the DB and cache!
-			return m, loadMessagesCmd(m.clientID, chatID)
+			return m.fetchChatMessages(chatID)
 		}
 	}
 
@@ -7360,6 +7583,64 @@ func (m Model) loadChatMessages(chatID string) (Model, tea.Cmd) {
 		m.app.NextLink = ""
 		m.app.SetLoadingMessages(true)
 		m.app.SnapToBottom = true
+	}
+	return m.fetchChatMessages(chatID)
+}
+
+func (m Model) enqueueGapFetch(chatID string) Model {
+	if chatID == "" || m.gapFetchInFlight[chatID] {
+		return m
+	}
+	for _, id := range m.gapFetchQueue {
+		if id == chatID {
+			return m
+		}
+	}
+	m.gapFetchQueue = append(m.gapFetchQueue, chatID)
+	return m
+}
+
+func (m Model) dropQueuedGapFetch(chatID string) Model {
+	if len(m.gapFetchQueue) == 0 {
+		return m
+	}
+	kept := make([]string, 0, len(m.gapFetchQueue))
+	for _, id := range m.gapFetchQueue {
+		if id != chatID {
+			kept = append(kept, id)
+		}
+	}
+	m.gapFetchQueue = kept
+	return m
+}
+
+func (m Model) drainGapFetches() (Model, tea.Cmd) {
+	if m.gapFetchInFlight == nil {
+		m.gapFetchInFlight = make(map[string]bool)
+	}
+	var cmds []tea.Cmd
+	for len(m.gapFetchInFlight) < maxConcurrentGapFetches && len(m.gapFetchQueue) > 0 {
+		id := m.gapFetchQueue[0]
+		m.gapFetchQueue = m.gapFetchQueue[1:]
+		if id == "" || m.gapFetchInFlight[id] {
+			continue
+		}
+		m.gapFetchInFlight[id] = true
+		cmds = append(cmds, loadGapMessagesCmd(m.clientID, id))
+	}
+	if len(cmds) == 0 {
+		return m, nil
+	}
+	return m, tea.Batch(cmds...)
+}
+
+// fetchChatMessages loads the recent page unless a gap fetch for this chat is
+// already running. A queued gap fetch is dropped so opening the chat does not
+// start a second request when a slot frees.
+func (m Model) fetchChatMessages(chatID string) (Model, tea.Cmd) {
+	m = m.dropQueuedGapFetch(chatID)
+	if m.gapFetchInFlight[chatID] {
+		return m, nil
 	}
 	return m, loadMessagesCmd(m.clientID, chatID)
 }
