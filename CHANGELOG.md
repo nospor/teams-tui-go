@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.4.0] - 2026-10-19
+
+### Bug Fixes
+
+- *(chats)* **Load and notify the full burst for an inactive chat** - ([b4f3596](https://github.com/nospor/teams-tui-go/commit/b4f359630e0c47bf4896e60e68e275997a1adf3c))
+
+
+> The chat list only carries the newest preview, so a quiet chat showed
+> and notified that one message until a later fetch filled the rest. Fetch
+> the recent page when the preview changes, and send one toast that counts
+> every new message.
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.3.9 [skip ci]** - ([35f2a62](https://github.com/nospor/teams-tui-go/commit/35f2a620e600aff6a444467e674b50667c53901a))
+
+
+
 ## [1.3.9] - 2026-10-15
 
 ### Features
