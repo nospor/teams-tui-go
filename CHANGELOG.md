@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.1] - 2026-10-19
+
+### Bug Fixes
+
+- *(compose)* **Keep mention detection on the real cursor after soft wrap** - ([fd31d4a](https://github.com/nospor/teams-tui-go/commit/fd31d4af42a91dd6435cd644abb2da312f357921))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.4.0 [skip ci]** - ([912788b](https://github.com/nospor/teams-tui-go/commit/912788bb34b33bb4363ab7c6def4b2faf7fefd2a))
+
+
+
 ## [1.4.0] - 2026-10-19
 
 ### Bug Fixes
