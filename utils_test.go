@@ -561,6 +561,75 @@ func TestGetCursorPosMentionOnWrappedRow(t *testing.T) {
 	}
 }
 
+func TestEmoticonCursorSoftWrap(t *testing.T) {
+	prefix := "hello world this is extra "
+	val := prefix + ":)"
+	ta := newMentionTextarea(20)
+	ta.SetValue(val)
+
+	if ta.LineInfo().RowOffset == 0 {
+		t.Fatal("expected the cursor to sit on a soft-wrapped row")
+	}
+
+	ta = replaceComposerEmoticons(ta)
+	wantVal := prefix + "🙂"
+	if ta.Value() != wantVal {
+		t.Fatalf("value = %q, want %q", ta.Value(), wantVal)
+	}
+	if ta.LineInfo().RowOffset == 0 {
+		t.Fatal("cursor jumped off the soft-wrapped row after emoticon replacement")
+	}
+	want := len([]rune(wantVal))
+	if got := getCursorPos(ta); got != want {
+		t.Fatalf("getCursorPos() = %d, want %d", got, want)
+	}
+}
+
+func TestEmoticonCursorSoftWrapMiddle(t *testing.T) {
+	val := "hello world this is extra :) more text"
+	ta := newMentionTextarea(20)
+	ta.SetValue(val)
+	ta.SetCursor(len([]rune("hello world this is extra :)")))
+
+	if ta.LineInfo().RowOffset == 0 {
+		t.Fatal("expected the cursor to sit on a soft-wrapped row")
+	}
+
+	ta = replaceComposerEmoticons(ta)
+	wantVal := "hello world this is extra 🙂 more text"
+	if ta.Value() != wantVal {
+		t.Fatalf("value = %q, want %q", ta.Value(), wantVal)
+	}
+	want := len([]rune("hello world this is extra 🙂"))
+	if got := getCursorPos(ta); got != want {
+		t.Fatalf("getCursorPos() = %d, want %d", got, want)
+	}
+	if ta.LineInfo().RowOffset == 0 {
+		t.Fatal("cursor jumped off the soft-wrapped row after emoticon replacement")
+	}
+}
+
+func TestEmoticonCursorHardNewline(t *testing.T) {
+	val := "hello\nworld :) tail"
+	ta := newMentionTextarea(40)
+	ta.SetValue(val)
+	// SetValue leaves the caret on the last hard line.
+	ta.SetCursor(len([]rune("world :)")))
+
+	ta = replaceComposerEmoticons(ta)
+	wantVal := "hello\nworld 🙂 tail"
+	if ta.Value() != wantVal {
+		t.Fatalf("value = %q, want %q", ta.Value(), wantVal)
+	}
+	if ta.Line() != 1 {
+		t.Fatalf("line = %d, want 1", ta.Line())
+	}
+	want := len([]rune("hello\nworld 🙂"))
+	if got := getCursorPos(ta); got != want {
+		t.Fatalf("getCursorPos() = %d, want %d", got, want)
+	}
+}
+
 func TestGetCursorPosHardNewline(t *testing.T) {
 	val := "@Jane\nplease review this"
 	ta := newMentionTextarea(40)

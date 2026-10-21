@@ -1768,21 +1768,7 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 
 			newVal := m.textarea.Value()
 			if oldVal != newVal {
-				replaced := replaceEmoticons(newVal)
-				if replaced != newVal {
-					// In bubbles/textarea v1.0.0, we can get the current column offset.
-					// SetValue resets the cursor to the start, so we attempt to restore it.
-					// For multi-line messages, we fallback to moving the cursor to the end
-					// to avoid jumping to the wrong line.
-					col := m.textarea.LineInfo().ColumnOffset
-					diff := len([]rune(newVal)) - len([]rune(replaced))
-					m.textarea.SetValue(replaced)
-					if m.textarea.LineCount() <= 1 {
-						m.textarea.SetCursor(col - diff)
-					} else {
-						m.textarea.CursorEnd()
-					}
-				}
+				m.textarea = replaceComposerEmoticons(m.textarea)
 			}
 			m.app.InputBuffer = m.textarea.Value()
 		}
@@ -7336,6 +7322,43 @@ func getCursorPos(ta textarea.Model) int {
 	info := ta.LineInfo()
 	pos += info.StartColumn + info.ColumnOffset
 	return pos
+}
+
+// replaceComposerEmoticons swaps text emoticons and restores the caret.
+// SetValue leaves the caret at the end of the buffer. The rune index has to
+// move back by however much shorter the replacement is. That index is the
+// hard-line position (StartColumn + ColumnOffset). ColumnOffset alone is only
+// the offset inside the current soft-wrapped row, and SetCursor treats it as
+// an index from the start of the hard line, which jumps the caret up a row.
+func replaceComposerEmoticons(ta textarea.Model) textarea.Model {
+	newVal := ta.Value()
+	replaced := replaceEmoticons(newVal)
+	if replaced == newVal {
+		return ta
+	}
+	newCursor := getCursorPos(ta) - (len([]rune(newVal)) - len([]rune(replaced)))
+	if newCursor < 0 {
+		newCursor = 0
+	}
+	ta.SetValue(replaced)
+	setTextareaCursor(&ta, replaced, newCursor)
+	return ta
+}
+
+// setTextareaCursor moves the caret to an absolute rune index. After SetValue
+// the caret sits on the last hard line, and SetCursor only moves within that
+// line. An index on an earlier hard line stays at the end of the buffer.
+func setTextareaCursor(ta *textarea.Model, value string, runeIndex int) {
+	lines := strings.Split(value, "\n")
+	lastStart := 0
+	for i := 0; i < len(lines)-1; i++ {
+		lastStart += len([]rune(lines[i])) + 1
+	}
+	if runeIndex >= lastStart {
+		ta.SetCursor(runeIndex - lastStart)
+		return
+	}
+	ta.CursorEnd()
 }
 
 // getMentionQuery looks backward from the cursor in a string to find an active '@' mention search.
