@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.2] - 2026-10-21
+
+### Bug Fixes
+
+- *(compose)* **Keep the caret on the wrapped row after emoticon replacement** - ([f7600c2](https://github.com/nospor/teams-tui-go/commit/f7600c225cfb73207c1ef1b4333bea5e41187adf))
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.4.1 [skip ci]** - ([fb6e6dd](https://github.com/nospor/teams-tui-go/commit/fb6e6dd8e4c85cb8c8fc82032a23b59717cbf616))
+
+
+
 ## [1.4.1] - 2026-10-19
 
 ### Bug Fixes
