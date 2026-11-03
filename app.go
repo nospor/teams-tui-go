@@ -88,6 +88,7 @@ type App struct {
 	CurrentUserName             *string
 	CurrentUserID               string // used for markChatRead
 	Messages                    []Message
+	MessagesConversationID      string // owner of Messages and its pagination/cursor state
 	LoadingMessages             bool
 	SearchLoadingMessages       bool
 	InputMode                   bool
@@ -309,6 +310,31 @@ func (a *App) SetChats(chats []Chat) {
 // SetCurrentUser records the detected current user's display name.
 func (a *App) SetCurrentUser(name string) {
 	a.CurrentUserName = &name
+}
+
+// ActivateConversation prevents transcript and message actions leaking across chats.
+func (a *App) ActivateConversation(id string) {
+	if a.MessagesConversationID == id {
+		return
+	}
+	a.MessagesConversationID = id
+	a.Messages = nil
+	a.NextLink = ""
+	a.LoadingMessages = false
+	a.PendingScrollID = ""
+	a.ScrollOffset, a.MaxScroll = 0, 0
+	a.MessageLineOffsets = nil
+	a.MessageSelectedIndex = 0
+	a.MessageSelectionMode, a.MessagePopupMode = false, false
+	a.MessagePopupScrollOffset = 0
+	a.ReactionMode, a.DeleteConfirmMode = false, false
+	a.AttachmentCursorMode = false
+	a.AttachmentSelectedIndex = 0
+	a.UrlSelectionMode = false
+	a.UrlsInMessage = nil
+	a.SearchPopupMode, a.SearchLoadingMessages = false, false
+	a.SearchPopupResults = nil
+	a.SnapToBottom = true
 }
 
 // SetMessages updates the current message list, merging new messages with existing ones.

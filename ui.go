@@ -486,6 +486,7 @@ func NewModel(app *App, clientID, userID string) Model {
 		viewCache:            &viewCache{dirty: true},
 	}
 	m.syncFilePickerKeys()
+	m.app.MessagesConversationID = m.activeConversationID()
 	return m
 }
 
@@ -1045,6 +1046,7 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 			break
 		}
 		m.app.SetLoadingMessages(false)
+		m.app.ActivateConversation(loadedChatID)
 		prev := m.app.Messages
 		// Only update if content changed.
 		if !messagesEqual(prev, msg.Messages) {
@@ -1178,7 +1180,7 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 	// ── More messages loaded (pagination) ───────────────────────────────
 	case MsgMoreMessagesLoaded:
 		convID := m.activeConversationID()
-		if msg.ConversationID != convID || convID == "" {
+		if msg.ConversationID != convID || convID == "" || m.app.MessagesConversationID != convID {
 			break
 		}
 
@@ -1606,9 +1608,10 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 	// ── Channel messages loaded ──────────────────────────────────
 	case MsgChannelMessagesLoaded:
 		if msg.Err != nil {
-			m.app.SetStatus("Channel messages unavailable: "+msg.Err.Error(), 5*time.Second)
-			m.app.SelectedChannelTeamID = ""
-			m.app.SelectedChannelID = ""
+			if m.channelSelectedIndex >= 0 && msg.ChannelID == m.app.SelectedChannelID && msg.TeamID == m.app.SelectedChannelTeamID {
+				m.app.SetStatus("Channel messages unavailable: "+msg.Err.Error(), 5*time.Second)
+				m.app.SetLoadingMessages(false)
+			}
 		} else {
 			// Cache messages and next link
 			if len(msg.Messages) > 0 {
@@ -1652,6 +1655,7 @@ func (m Model) updateInternal(msg tea.Msg) (Model, tea.Cmd) {
 				msg.ChannelID == m.app.SelectedChannelID)
 
 			if isActiveChannel {
+				m.app.ActivateConversation(msg.ChannelID)
 				prev := m.app.Messages
 				if !messagesEqual(prev, msg.Messages) {
 					m.app.SetMessages(msg.Messages, msg.NextLink)
@@ -3005,14 +3009,28 @@ func (m Model) handleUrlSelectionModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 // Update is the Bubble Tea update function — processes messages and returns
 // the new model plus any commands.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var beforeCmd tea.Cmd
+	changedBefore := m.app.MessagesConversationID != m.activeConversationID()
+	if changedBefore {
+		m, beforeCmd = m.reconcileConversation()
+	}
 	updatedModel, cmd := m.updateInternal(msg)
+	if beforeCmd != nil {
+		cmd = tea.Batch(beforeCmd, cmd)
+	}
+	var selectionCmd tea.Cmd
+	changedOwner := updatedModel.app.MessagesConversationID != updatedModel.activeConversationID()
+	if changedOwner {
+		updatedModel, selectionCmd = updatedModel.reconcileConversation()
+		cmd = tea.Batch(cmd, selectionCmd)
+	}
 
 	// A heartbeat tick that changed nothing cannot have changed the unread
 	// counts or the rendered view either, so skip both. Everything else falls
 	// through to the full path — defaulting to "do the work" keeps this safe
 	// when new message types are added.
 	_, isTick := msg.(MsgTick)
-	idleTick := isTick && !updatedModel.tickDidWork
+	idleTick := isTick && !updatedModel.tickDidWork && !changedOwner && !changedBefore
 
 	if !idleTick {
 		// Scanning every chat for unread messages/reactions is O(chats) and
@@ -4849,16 +4867,24 @@ func (m Model) syncChatListSelection(prevID string) (Model, tea.Cmd) {
 	}
 	chat := m.app.GetSelectedChat()
 	if chat == nil {
-		if prevID != "" {
-			m.app.Messages = nil
-			m.app.NextLink = ""
-		}
+		m.app.ActivateConversation("")
 		return m, nil
 	}
-	if chat.ID == prevID {
+	if chat.ID == prevID && m.app.MessagesConversationID == chat.ID {
 		return m, nil
 	}
 	return m.loadChatMessages(chat.ID)
+}
+
+func (m Model) reconcileConversation() (Model, tea.Cmd) {
+	if m.activeConversationID() == "" {
+		m.app.ActivateConversation("")
+		return m, nil
+	}
+	if m.channelSelectedIndex >= 0 {
+		return m.loadChannelMessages(m.app.SelectedChannelTeamID, m.app.SelectedChannelID)
+	}
+	return m.loadChatMessages(m.app.GetSelectedChat().ID)
 }
 
 func (m Model) renderUrlSelection(w, h int) string {
@@ -7586,6 +7612,7 @@ func (m Model) openSleepChat(index int) (Model, tea.Cmd) {
 }
 
 func (m Model) loadChatMessages(chatID string) (Model, tea.Cmd) {
+	m.app.ActivateConversation(chatID)
 	m.lastMessageRefresh = time.Now()
 	// 1. Check in-memory cache first if it has been fully loaded once in this session.
 	if m.app.ChatMessagesLoadedOnce[chatID] {
@@ -7694,6 +7721,7 @@ func (m Model) fetchChatMessages(chatID string) (Model, tea.Cmd) {
 }
 
 func (m Model) loadChannelMessages(teamID string, channelID string) (Model, tea.Cmd) {
+	m.app.ActivateConversation(channelID)
 	m.lastMessageRefresh = time.Now()
 	// 1. Check in-memory cache first
 	if cached, ok := m.app.CachedMessages[channelID]; ok && len(cached) > 0 {

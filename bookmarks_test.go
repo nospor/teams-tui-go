@@ -290,8 +290,8 @@ func TestMessagesLoadedAppliesByChatID(t *testing.T) {
 	if model.app.GetSelectedChat() == nil || model.app.GetSelectedChat().ID != "B" {
 		t.Fatal("selected chat should stay B")
 	}
-	if len(model.app.Messages) != 1 || model.app.Messages[0].ID != "from-A" {
-		t.Fatalf("in-flight load for A updated B's pane = %+v", model.app.Messages)
+	if len(model.app.Messages) != 1 || model.app.Messages[0].ID != "from-B" {
+		t.Fatalf("B's pane was not reconciled after the delayed load = %+v", model.app.Messages)
 	}
 	if len(model.app.CachedMessages["A"]) != 2 {
 		t.Fatalf("A cache = %+v", model.app.CachedMessages["A"])
