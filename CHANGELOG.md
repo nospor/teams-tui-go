@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.4.3] - 2026-11-03
+
+### Features
+
+- *(ui)* **Open the first unread chat when leaving sleep** - ([6e7e95b](https://github.com/nospor/teams-tui-go/commit/6e7e95b1e9378efe082362e131441bd2605a2951))
+
+
+> Enter in sleep mode jumps to the topmost unread chat in the sidebar, and
+> returns to the conversation open before sleep only when nothing is
+> unread.
+
+
+
+### Miscellaneous Tasks
+
+- **Update CHANGELOG.md for v1.4.2 [skip ci]** - ([ff34ea1](https://github.com/nospor/teams-tui-go/commit/ff34ea125323750e41132f017984b1469e7a61bc))
+
+
+
 ## [1.4.2] - 2026-10-21
 
 ### Bug Fixes
