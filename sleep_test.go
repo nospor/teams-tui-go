@@ -96,6 +96,65 @@ func TestSleepEnterRestoresChannel(t *testing.T) {
 	}
 }
 
+func TestSleepEnterOpensFirstUnreadChat(t *testing.T) {
+	carol := "Carol"
+	bob := "Bob"
+	alice := "Alice"
+	chats := []Chat{
+		{ID: "carol", CachedDisplayName: &carol},
+		{ID: "bob", CachedDisplayName: &bob},
+		{ID: "alice", CachedDisplayName: &alice},
+	}
+	model := bookmarkChats(chats)
+	model.app.SelectedIndex = 2
+	model.lastMsgID["carol"] = "m1"
+	model.lastReadMsgID["carol"] = "m1"
+	model.lastMsgID["bob"] = "m2"
+	model.lastReadMsgID["bob"] = "m1"
+	model.lastMsgID["alice"] = "m9"
+	model.lastReadMsgID["alice"] = "m8"
+
+	model, _ = model.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	// Avoid the mark-read network call; selection is what this test checks.
+	model.focused = false
+	model, _ = model.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+
+	got := model.app.GetSelectedChat()
+	if got == nil || got.ID != "bob" || model.app.SelectedIndex != 1 {
+		t.Fatalf("opened idx=%d chat=%v", model.app.SelectedIndex, got)
+	}
+	if model.channelSelectedIndex != -1 {
+		t.Fatalf("channel selected %d", model.channelSelectedIndex)
+	}
+}
+
+func TestSleepEnterPrefersUnreadChatOverChannel(t *testing.T) {
+	bob := "Bob"
+	model := bookmarkChats([]Chat{{ID: "bob", CachedDisplayName: &bob}})
+	model.app.SelectedIndex = 0
+	model.app.TeamsData = []TeamWithChannels{{
+		Team:     Team{ID: "team", DisplayName: "Engineering"},
+		Channels: []Channel{{ID: "chan", DisplayName: "General"}},
+	}}
+	model.channelSelectedIndex = 0
+	model.app.SelectedChannelTeamID = "team"
+	model.app.SelectedChannelID = "chan"
+	model.lastMsgID["bob"] = "m2"
+	model.lastReadMsgID["bob"] = "m1"
+
+	model, _ = model.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	model.focused = false
+	model, _ = model.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+
+	got := model.app.GetSelectedChat()
+	if got == nil || got.ID != "bob" || model.app.SelectedIndex != 0 {
+		t.Fatalf("opened idx=%d chat=%v", model.app.SelectedIndex, got)
+	}
+	if model.channelSelectedIndex != -1 || model.app.SelectedChannelID != "" {
+		t.Fatalf("channel idx=%d id=%q", model.channelSelectedIndex, model.app.SelectedChannelID)
+	}
+}
+
 func TestEnterOutsideSleepDoesNothing(t *testing.T) {
 	bob := "Bob"
 	model := bookmarkChats([]Chat{{ID: "bob", CachedDisplayName: &bob}})

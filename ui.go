@@ -2074,9 +2074,9 @@ func (m Model) handleNormalModeKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.app.NextLink = ""
 			m.app.SetLoadingMessages(false)
 			if label := m.sleepReturnLabel(); label != "" {
-				m.app.SetStatus(fmt.Sprintf("💤 Sleep. %s returns to %s.", FormatKeys(k.Resume, "/"), label), 4*time.Second)
+				m.app.SetStatus(fmt.Sprintf("💤 Sleep. %s opens the first unread chat, or returns to %s.", FormatKeys(k.Resume, "/"), label), 4*time.Second)
 			} else {
-				m.app.SetStatus("💤 Entered sleep mode. No chat active.", 3*time.Second)
+				m.app.SetStatus(fmt.Sprintf("💤 Sleep. %s opens the first unread chat.", FormatKeys(k.Resume, "/")), 3*time.Second)
 			}
 		}
 
@@ -3378,14 +3378,15 @@ func (m Model) renderRightPanel(w, h int) string {
 	if m.app.SelectedIndex < 0 && m.channelSelectedIndex < 0 {
 		nav := slashKeys(m.app.Keys.Normal.Prev, m.app.Keys.Normal.Next)
 		var idleMsg string
+		resume := FormatKeys(m.app.Keys.Normal.Resume, "/")
 		if label := m.sleepReturnLabel(); label != "" {
 			if w > 4 {
 				label = ansi.Truncate(label, w-4, "…")
 			}
-			idleMsg = fmt.Sprintf("💤 Sleep Mode\n\nPolling is paused.\n\n%s returns to\n%s\n\n%s selects another chat",
-				FormatKeys(m.app.Keys.Normal.Resume, "/"), label, nav)
+			idleMsg = fmt.Sprintf("💤 Sleep Mode\n\nPolling is paused.\n\n%s opens the first unread chat,\nor returns to\n%s\n\n%s selects another chat",
+				resume, label, nav)
 		} else {
-			idleMsg = fmt.Sprintf("💤 Sleep Mode\n\nNo chat selected. Polling is paused.\n\nPress %s to select a chat\nand resume polling.", nav)
+			idleMsg = fmt.Sprintf("💤 Sleep Mode\n\nNo chat selected. Polling is paused.\n\n%s opens the first unread chat.\n%s selects a chat and resumes polling.", resume, nav)
 		}
 		msgContent := lipgloss.Place(w, h-2, lipgloss.Center, lipgloss.Center,
 			lipgloss.NewStyle().Foreground(colDimGray).Align(lipgloss.Center).Render(idleMsg),
@@ -6619,7 +6620,7 @@ func (m Model) getHelpContentLines() []string {
 			{hk(n.Presence), "Presence status of chat participants (chats only, feature: presence_enabled)"},
 			{hk(n.Notifications), "Cycle notification mode"},
 			{hk(n.Sleep), "Enter sleep / idle mode (stop polling)"},
-			{hk(n.Resume), "Return to the conversation open before sleep"},
+			{hk(n.Resume), "Open the first unread chat, or the conversation open before sleep"},
 			{hk(n.Help), "Show this help"},
 			{hk(n.PageUp) + " / " + hk(n.PageDown), "Scroll messages up / down"},
 			{hk(n.Quit) + " / Ctrl+C", "Quit (Ctrl+C always quits)"},
@@ -7506,12 +7507,16 @@ func (m Model) chatByID(id string) *Chat {
 	return nil
 }
 
-// resumeSleep reopens the conversation that was active when sleep started.
-// Enter outside sleep does nothing. A chat hidden by the current bookmark stays
+// resumeSleep opens the first unread chat in the visible sidebar. With none,
+// it reopens the conversation that was active when sleep started. Enter
+// outside sleep does nothing. A chat hidden by the current bookmark stays
 // asleep so a stale index cannot open a different row.
 func (m Model) resumeSleep() (Model, tea.Cmd) {
 	if m.app.SelectedIndex >= 0 || m.channelSelectedIndex >= 0 {
 		return m, nil
+	}
+	if idx := m.firstUnreadChatIndex(); idx >= 0 {
+		return m.openSleepChat(idx)
 	}
 	if m.sleepReturnChannelID != "" {
 		chans := m.allChannels()
@@ -7542,19 +7547,9 @@ func (m Model) resumeSleep() (Model, tea.Cmd) {
 		return m, nil
 	}
 	for i, chat := range m.app.Chats {
-		if chat.ID != m.sleepReturnChatID {
-			continue
+		if chat.ID == m.sleepReturnChatID {
+			return m.openSleepChat(i)
 		}
-		m.app.SelectedIndex = i
-		m.channelSelectedIndex = -1
-		m.app.SelectedChannelTeamID = ""
-		m.app.SelectedChannelID = ""
-		m.app.SearchMode = false
-		m.app.SearchActive = false
-		m.app.SearchQuery = ""
-		m.app.SnapToBottom = true
-		m = m.markRead()
-		return m.loadChatMessages(chat.ID)
 	}
 	name := m.sleepReturnLabel()
 	if name == "" {
@@ -7562,6 +7557,32 @@ func (m Model) resumeSleep() (Model, tea.Cmd) {
 	}
 	m.app.SetStatus(name+" is hidden by the current filter.", 4*time.Second)
 	return m, nil
+}
+
+// firstUnreadChatIndex is the topmost visible chat with an unread message.
+// Favourites stay above the stable order because that is how the sidebar is built.
+// Reaction-only rows are not unread messages.
+func (m Model) firstUnreadChatIndex() int {
+	for i, chat := range m.app.Chats {
+		if m.isUnread(chat) {
+			return i
+		}
+	}
+	return -1
+}
+
+func (m Model) openSleepChat(index int) (Model, tea.Cmd) {
+	chat := m.app.Chats[index]
+	m.app.SelectedIndex = index
+	m.channelSelectedIndex = -1
+	m.app.SelectedChannelTeamID = ""
+	m.app.SelectedChannelID = ""
+	m.app.SearchMode = false
+	m.app.SearchActive = false
+	m.app.SearchQuery = ""
+	m.app.SnapToBottom = true
+	m = m.markRead()
+	return m.loadChatMessages(chat.ID)
 }
 
 func (m Model) loadChatMessages(chatID string) (Model, tea.Cmd) {
