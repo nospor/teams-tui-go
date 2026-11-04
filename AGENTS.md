@@ -45,6 +45,7 @@ Go-based terminal UI application for Microsoft Teams. Authenticates via OAuth2 D
 
 ### Application State (`app.go`)
 - `App` struct holds all runtime state: chats, messages, selection, input mode, notification mode, etc.
+- `MessagesConversationID` owns the visible transcript and pagination state. Call `ActivateConversation` before loading a different conversation; `Update` reconciles ownership after filters/refreshes, including idle rendering. Stale chat/channel responses may update their own cache but must not change another conversation's pane or actions.
 - `NotificationMode` enum is JSON-serialised as a string ("None", "Console", "System", "Both")
 - `CurrentUserName` is used for filtering and message alignment; it is **not displayed in the UI**
 - `FeatureFlags` struct (populated once at startup in `main.go` from `ResolveFeatureXxx()`) exposes booleans for each optional feature. **Always read feature state from `app.Features`** — never call `ResolveFeatureXxx()` inside the Bubble Tea event loop.
